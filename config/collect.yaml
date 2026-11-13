@@ -1,0 +1,22 @@
+# Settings for the intraday snapshot recorder and for polite web requests.
+# Parsed by etfp.config.load_collect_settings. Times MUST be quoted strings
+# (an unquoted 15:30 can be misread by yaml as a number).
+
+inav:
+  # iNAV = the indicative NAV an ETF publishes during the trading day (a live
+  # estimate of what its holdings are worth). We record it, with the market
+  # price and order-book depth, every `every_minutes` between start and end.
+  start: "09:15"          # NSE opens
+  end: "15:30"            # NSE closes; the 15:30 snapshot is included
+  every_minutes: 15
+  post_close: "15:45"     # one extra snapshot after the close
+  timezone: "Asia/Kolkata"
+  # The recorder writes a heartbeat file each run; a heartbeat older than this
+  # means the recorder has stopped and an alert should fire.
+  heartbeat_stale_minutes: 20
+
+http:
+  # Project rule: at least 1 second between NSE calls. 1.5 leaves margin.
+  nse_min_interval_s: 1.5
+  default_interval_s: 0.5   # other sources (AMFI, Yahoo, ...)
+  max_retries: 3            # with exponential backoff

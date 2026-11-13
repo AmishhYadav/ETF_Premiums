@@ -1,0 +1,42 @@
+# NSE calendar overrides, read by src/etfp/calendars.py.
+#
+# Why this file exists
+# --------------------
+# The calendar library (exchange_calendars) has no NSE calendar of its own; we
+# borrow the BSE one, which shares holidays with NSE. Two problems follow:
+#   1. The library only knows Indian holidays up to the end of 2026.
+#   2. If NSE ever closes or opens on a day the library does not expect, we
+#      must be able to correct it without touching code.
+# Wrong holidays shift "T-2" (the price-band base day) and "previous session"
+# (which NAV is stale), so keep this file honest.
+#
+# Every entry needs a `reason`, so the next reader knows where it came from.
+
+# Dates the library thinks are trading days but NSE was shut (applies at any date).
+# Example:
+#   - {date: 2026-12-25, reason: "Unscheduled closure, NSE circular XYZ/2026"}
+extra_holidays: []
+
+# Dates the library thinks are closed but NSE traded (for example a special
+# Saturday session). Applies at any date.
+# Example:
+#   - {date: 2026-02-28, reason: "Special Saturday session, NSE circular XYZ/2026"}
+extra_sessions: []
+
+# Holidays for years BEYOND the library's recorded range (2027 onwards), as
+# year -> list of dates (weekday holidays only matter; weekends are already
+# closed). A plain date or {date: ..., reason: ...} both work.
+#
+# If a year is absent here, every Monday-Friday of that year is treated as a
+# trading day and the calendar reports it as "provisional". That is deliberate:
+# the live recorder would rather run on a holiday than miss a trading day.
+#
+# 2027: VERIFY. Fill this in from the NSE trading-holiday circular for 2027
+# once NSE publishes it (usually in December of the previous year), then log it
+# in docs/DECISIONS.md. Expected format (these dates are placeholders, NOT real):
+#
+# holidays:
+#   2027:
+#     - 2027-01-26   # Republic Day (example)
+#     - {date: 2027-03-26, reason: "Holi (example)"}
+holidays: {}

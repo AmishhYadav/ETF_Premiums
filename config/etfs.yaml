@@ -1,0 +1,223 @@
+# ETF universe (SPEC section 4). Parsed by etfp.config.load_etfs.
+#
+# Plain-words glossary
+#   NAV           net asset value: what one unit's underlying holdings are worth.
+#   premium       how far the exchange price sits above NAV.
+#   group         a HYPOTHESIS about whether the fund can still create new units
+#                 (blocked / unclear / possibly_open / control / bullion). It is
+#                 only a label; the units-outstanding data (SPEC 6.5) decides the
+#                 real status. Do not treat it as a fact.
+#   tracked       true = gets fair value, iNAV snapshots and a dashboard row.
+#   futures_proxy index future used for the fair-value calculation
+#                 (NQ = E-mini Nasdaq-100, ES = E-mini S&P 500, a proxy per SPEC 6.2).
+#   creation_unit_size  units in one creation/redemption basket.
+#   verify        names of fields not yet confirmed against a primary source.
+#
+# ISINs and AMFI scheme codes below were checked on 2026-11-10 against the NSE ETF
+# list (eq_etfseclist.csv) and the AMFI daily NAV file (NAVAll.txt, matched by ISIN).
+# Bloomberg tickers are empty until the licensed data is mapped.
+
+etfs:
+  - symbol: MONQ50
+    name: "Motilal Oswal Nasdaq Q 50 ETF"
+    amc: "Motilal Oswal"
+    isin: INF247L01AU3
+    amfi_scheme_code: 149438
+    underlying_index: "Nasdaq Q-50"
+    underlying_market: US
+    currency: USD
+    asset_class: equity
+    group: blocked
+    tracked: true
+    futures_proxy: NQ
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: null
+    verify: [bloomberg]
+
+  - symbol: MON100
+    name: "Motilal Oswal Nasdaq 100 ETF"
+    amc: "Motilal Oswal"
+    isin: INF247L01AP3
+    amfi_scheme_code: 114984
+    underlying_index: "Nasdaq-100"
+    underlying_market: US
+    currency: USD
+    asset_class: equity
+    group: unclear
+    tracked: true
+    futures_proxy: NQ
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: null
+    verify: [bloomberg]
+
+  - symbol: MASPTOP50
+    name: "Mirae Asset S&P 500 Top 50 ETF"
+    amc: "Mirae Asset"
+    isin: INF769K01HP3
+    amfi_scheme_code: 149169
+    underlying_index: "S&P 500 Top 50"
+    underlying_market: US
+    currency: USD
+    asset_class: equity
+    group: blocked
+    tracked: true
+    futures_proxy: ES
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "E-mini S&P 500 (ES) is a proxy for the S&P 500 Top 50 (SPEC 6.2)."
+    verify: [bloomberg, futures_proxy]
+
+  - symbol: MAFANG
+    name: "Mirae Asset NYSE FANG+ ETF"
+    amc: "Mirae Asset"
+    isin: INF769K01HF4
+    amfi_scheme_code: 148927
+    underlying_index: "NYSE FANG+"
+    underlying_market: US
+    currency: USD
+    asset_class: equity
+    group: blocked
+    tracked: true
+    futures_proxy: ES
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "E-mini S&P 500 (ES) is a proxy for NYSE FANG+ (SPEC 6.2)."
+    verify: [bloomberg, futures_proxy]
+
+  - symbol: MAHKTECH
+    name: "Mirae Asset Hang Seng TECH ETF"
+    amc: "Mirae Asset"
+    isin: INF769K01HS7
+    amfi_scheme_code: 149379
+    underlying_index: "Hang Seng TECH"
+    underlying_market: HK
+    currency: HKD
+    asset_class: equity
+    group: blocked
+    tracked: true
+    futures_proxy: null
+    creation_unit_size: 800000
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: null
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: HNGSNGBEES
+    name: "Nippon India ETF Hang Seng BeES"
+    amc: "Nippon India"
+    isin: INF204KB19I1
+    amfi_scheme_code: 140095
+    underlying_index: "Hang Seng Index"
+    underlying_market: HK
+    currency: HKD
+    asset_class: equity
+    group: possibly_open
+    tracked: true
+    futures_proxy: null
+    creation_unit_size: 25000
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: null
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: NIFTYBEES
+    name: "Nippon India ETF Nifty 50 BeES"
+    amc: "Nippon India"
+    isin: INF204KB14I2
+    amfi_scheme_code: 140084
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: true
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control: no overseas cap applies."
+    verify: [bloomberg]
+
+  - symbol: GOLDBEES
+    name: "Nippon India ETF Gold BeES"
+    amc: "Nippon India"
+    isin: INF204KB17I5
+    amfi_scheme_code: 140088
+    underlying_index: "Domestic gold price"
+    underlying_market: IN
+    currency: INR
+    asset_class: gold
+    group: bullion
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Bullion module (v2); not tracked yet."
+    verify: []
+
+  - symbol: SILVERBEES
+    name: "Nippon India Silver ETF"
+    amc: "Nippon India"
+    isin: INF204KC1402
+    amfi_scheme_code: 149758
+    underlying_index: "Domestic silver price"
+    underlying_market: IN
+    currency: INR
+    asset_class: silver
+    group: bullion
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Bullion module (v2); not tracked yet. NSE symbol SILVERBEES; AMFI scheme name is 'Nippon India Silver ETF'."
+    verify: []
+
+  - symbol: JUNIORBEES
+    name: "Nippon India ETF Nifty Next 50 Junior BeES"
+    amc: "Nippon India"
+    isin: INF732E01045
+    amfi_scheme_code: 140085
+    underlying_index: "Nifty Next 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control."
+    verify: []
+
+  - symbol: BANKBEES
+    name: "Nippon India ETF Nifty Bank BeES"
+    amc: "Nippon India"
+    isin: INF204KB15I9
+    amfi_scheme_code: 140087
+    underlying_index: "Nifty Bank"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control."
+    verify: []
+
+  - symbol: NIFTYIETF
+    name: "ICICI Prudential Nifty 50 ETF"
+    amc: "ICICI Prudential"
+    isin: INF109K012R6
+    amfi_scheme_code: 121366
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control: large Nifty 50 ETF from a different fund house than NIFTYBEES."
+    verify: []

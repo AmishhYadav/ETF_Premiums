@@ -1,0 +1,213 @@
+\documentclass[10pt,journal,a4paper]{IEEEtran}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs,tabularx,array,multirow}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{xcolor}
+\usepackage[hyphens]{url}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=blue!45!black,urlcolor=blue!45!black,pdftitle={Anchored to What? Price Limits, Rationed Creation and the Premiums on India's International ETFs},pdfauthor={Amish Yadav}]{hyperref}
+\usepackage{float}
+\renewcommand{\bibfont}{\footnotesize}
+\setlength{\bibsep}{0pt}
+\renewcommand{\arraystretch}{1.1}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newtheorem{proposition}{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newcommand{\fund}[1]{\textsc{\MakeLowercase{#1}}}
+\newcommand{\NAV}{\mathrm{NAV}}
+\newcommand{\FV}{\mathrm{FV}}
+\newcommand{\tabnote}[1]{\par\smallskip\begin{minipage}{\linewidth}\footnotesize#1\end{minipage}}
+\input{analysis/mc_macros.tex}
+\hyphenation{ex-change-traded}
+\makeatletter\renewcommand{\theHtable}{\arabic{table}}\renewcommand{\theHfigure}{\arabic{figure}}\makeatother
+
+\begin{document}
+\title{Anchored to What? Price Limits, Rationed Creation and the Premiums on India's International ETFs}
+\author{Amish Yadav%
+\thanks{Mukesh Patel School of Technology Management \& Engineering, SVKM's NMIMS, Mumbai, India. Second draft, 12 November 2026. Pre-results working paper: design, measures and tests are fixed here; no estimate comes from the study's own panel, which is under construction. Literature search, drafting and code were assisted by an AI system (Claude, Anthropic); the author is responsible for the content. The author holds no position in the funds studied and will not trade them during the study. No funding was received.}}
+\markboth{Second draft, 12 November 2026}{Yadav: Anchored to What?}
+\maketitle
+\begin{abstract}
+India caps what its mutual funds may invest abroad, and since 2022 the cap has rationed the creation of units in its six listed international exchange-traded funds. Until 4 September 2026 a daily price band anchored to a lagged net asset value (NAV) capped their premiums; exchange files show that on the last day of that regime five of the six closed exactly at the ceiling. On 7 September the band was re-anchored to the previous close. One fund closed 235\% above NAV on the ninth session that followed, and on 9 November the six funds were worth Rs 4,875 crore more on the exchange than at NAV. This paper argues that when arbitrage is blocked, the reference price of a price limit decides whether mispricing is bounded: a value anchor is a fence, a price anchor only a speed limit. It sets out a design to measure how much of the later premium the old band had hidden and how much the new band induced, using a censored autoregression whose ceiling moves each day, and shows by simulation that the estimator recovers a known hidden premium, while ignoring the censoring mistakes hidden demand for induced demand. It dates quota-rationed creations from the exchange's unit counts, and it fixes tests for the planned return to a NAV anchor on 1 April 2027, a switch that cannot be smooth for any fund trading more than 20\% above NAV.
+\end{abstract}
+\begin{IEEEkeywords}
+exchange-traded funds, price limits, reference price, limits to arbitrage, capital controls, censored regression, pre-registration, India. JEL: G12, G14, G18, G23, F38.
+\end{IEEEkeywords}
+
+
+%=====================================================================
+\section{Introduction}
+On 18 September 2026 a unit of the Motilal Oswal Nasdaq Q50 ETF closed at Rs 396.30 on the National Stock Exchange of India (NSE). The fund's net asset value (NAV) for that date was Rs 118.14 \citep{indmoney2026unwind}. Buyers paid Rs 3.35 for each rupee of Nasdaq-listed shares the fund held. Two weeks earlier, on 4 September, the same unit had closed 19.5\% above NAV. The fifty companies in the fund did not triple in value in between. A trading rule changed.
+
+An exchange-traded fund (ETF) normally trades near NAV because market makers can create new units at NAV when the price is higher and redeem units when it is lower \citep{bendavid2017exchange}. India caps what its mutual funds may invest abroad, at US\$7 billion for the industry and US\$1 billion for a fund house \citep{bs2021limit}, and the caps have bound since early 2022 \citep{pti2022resume}. An ETF that holds foreign shares must buy more of them to create a unit, so for India's six listed international ETFs creation has been rationed for most of the period since. Redemption still works. The funds behave like closed-end funds whose supply can shrink and can grow only when their fund house finds room under its cap.
+
+A second rule hid the consequences. Exchanges allowed an ETF to trade only within 20\% of its NAV of two days earlier \citep{sebi2026circular}, and the premiums of these funds pressed against that ceiling. Exchange and fund-industry files for 4 September 2026, the last session under that rule, show five of the six funds closing exactly at the upper limit, to the paisa (Section~\ref{sec:evidence}). On 7 September the Securities and Exchange Board of India (SEBI) moved the band's base to the previous day's closing price \citep{sebi2026circular,sebi2026ext}. The change answered a problem in gold and silver ETFs, whose prices had outrun a stale NAV base early in 2026 \citep{sebi2026cp}. For a fund that cannot create units it removed the ceiling: each close became the next day's base, so a premium could compound by up to 20\% a day.
+
+This paper is about that base. Research on price limits asks whether limits should exist and how wide they should be; in every case studied the limit is anchored to the previous close or settlement price, and the asset has no published value against which a limit could be set instead. India's ETFs had a limit anchored to value, then one anchored to price, in the same securities, with the barrier to arbitrage unchanged. The two anchors do different jobs. A limit anchored to value is a fence: it bounds how far price can stand from value, whatever buyers want. A limit anchored to price is a speed limit: it bounds each day's move and places no bound on where the price ends up. The fence was never designed as one. SEBI's stated concern was the staleness of the base, and neither its consultation paper nor its circular mentions funds that cannot create units.
+
+The re-anchoring raises a question that the price path alone cannot answer. The 235\% premium may be demand that existed all along and that the fence had hidden. Or the new band may have created demand that did not exist before: a run of upper-limit closes draws attention and new buyers \citep{seasholes2007predictable}, and buyers extrapolate from the run itself \citep{barberis2018extrapolation,pearson2021chinese}. Call the first part revealed and the second induced. The distinction matters for policy. If the premium was revealed, the old band concealed a shortage that the cap on overseas investment had created, and the new band only made it visible. If it was induced, the choice of anchor itself moved prices away from value. The pre-change data can separate the two, because under the old band the premium was free on some days and capped on others, and the cap sat at a different level each day for reasons unrelated to demand.
+
+The setting has three features that studies of mispricing rarely have together. The asset's value is published every day. The barrier to arbitrage is a written regulation whose bite can be read each day from the exchange's record of units outstanding. And the rule that bounds the price changed on one known date and is due, as a regulatory target, to change again on 1 April 2027, when the base is to become the previous day's NAV. Work on limits to arbitrage \citep{shleifer1997limits}, closed-end funds \citep{lee1991investor} and speculative bubbles \citep{xiong2011chinese} has usually had to estimate value, infer the barrier, or both.
+
+The paper makes four contributions, and it is careful about what it does not claim.
+\begin{enumerate}
+\item \emph{The anchor as the treatment.} It is, to our knowledge, the first study of a change in the reference price of a daily price limit, from a lagged fundamental value to the previous close, in the same securities. Section~\ref{sec:framework} states what each anchor can and cannot bound, and shows that a return from a price anchor to a value anchor cannot be smooth: on the day of the switch the price of a fund trading 86\% above NAV must fall by at least 36\%.
+\item \emph{Revealed against induced.} It sets out a method to estimate the premium that a value-anchored limit censored, and to split the premium observed afterwards into the part the rule revealed and the part it induced. The ceiling in the censored model is the exchange's official band relative to fair value, which moves each day. A Monte Carlo study shows that the estimator recovers a known hidden premium with little bias, that an analysis which ignores the censoring would report induced demand where there is none, and that the test needs its critical values calibrated when most days are capped (Section~\ref{sec:design}).
+\item \emph{Rationing dated from exchange records.} It uses the exchange's daily count of units outstanding to date quota-rationed creations. The count contradicts the common account that creation in these funds has been shut since 2022 or 2024: one fund's units grew four and a half times between July 2024 and April 2026, in exact multiples of its creation unit. Each creation is a supply shock of known size.
+\item \emph{A test fixed before the outcome.} It specifies tests for April 2027, with three branches and five predictions, before any 2027 observation exists (Section~\ref{sec:april}).
+\end{enumerate}
+The paper does not claim to be the first on suspended creation, which \citet{johnson2016essays} studies in exchange-traded notes, or on premiums behind capital controls, which the literature on closed-end country funds established \citep{bonserneal1990international}. It does not claim that buyers were irrational: daily data cannot identify who bought, and the April switch is a target that may be delayed. And six funds from three fund houses are a case, not a sample of ETFs.
+
+This is a pre-results paper. The study's own panel is under construction, and no hypothesis is tested here. What the paper does report from primary sources is limited to exchange and fund-industry files for a handful of dates, which are enough to establish four facts: that five of six funds sat at the ceiling when the fence came down; that the fund houses' indicative NAVs for the US-linked funds move with the rupee and not with the underlying shares; that creation was rationed in exact creation units and stopped entirely from April 2026; and that on 9 November 2026 holders of the six funds owned units priced Rs 4,875 crore above the value of what the funds held. Press figures are used for the dates in between and are labelled as such. Appendix~\ref{app:protocol} records what had been seen when each element of the design was fixed.
+
+India has seen the mirror image. In the 1990s and 2000s foreigners could buy depositary receipts of Indian companies abroad more freely than the shares themselves, and the receipts traded above the local shares \citep{jithendranathan2000barriers,stigler2010understanding}; those of Infosys averaged a premium of about 50\% in New York \citep{financeasia2003}, which \citet{puthenpurackal2006explaining} attributes to limited supply, downward-sloping demand and trend-chasing by small investors. Then foreigners overpaid in New York for an Indian share; now residents overpay in Mumbai for American ones. The control is of the same kind and its direction is reversed.
+
+Section~\ref{sec:institutions} sets out the institutions. Section~\ref{sec:framework} gives the framework. Section~\ref{sec:literature} places the paper in the literature. Section~\ref{sec:hypotheses} states the hypotheses, Section~\ref{sec:data} the data and measures and Section~\ref{sec:design} the empirical design, with the simulation. Section~\ref{sec:evidence} reports the evidence available before the panel. Section~\ref{sec:april} fixes the tests for April 2027. Section~\ref{sec:limits} states the limitations and Section~\ref{sec:conclusion} concludes.
+
+%=====================================================================
+\section{Institutional Setting}\label{sec:institutions}
+\subsection{Creation, redemption and who may use them}
+An ETF publishes a NAV once a day and an indicative NAV (iNAV) during trading hours. Units are created and redeemed in blocks: 250,000 units for the Motilal Oswal Nasdaq 100 ETF \citep{motilal2026sid} and 600,000 for the Nasdaq Q50 ETF \citep{indmoney2026unwind}. Only market makers and investors dealing in Rs 25 crore or more transact directly with the fund house \citep{mirae2026factsheet}; everyone else trades on the exchange. Arbitrage therefore rests on a few market makers and on the fund house's ability to issue.
+
+\subsection{Caps on overseas investment}
+The industry limit of US\$7 billion dates from 2008 \citep{lawasia2026}. In November 2020 SEBI raised the limit per fund house to US\$600 million \citep{bs2020limit} and in June 2021 to US\$1 billion, with a separate industry pool of US\$1 billion, and US\$300 million per house, for investment in foreign-listed ETFs \citep{bs2021limit}. On 18 January 2022 Motilal Oswal suspended the issuance of units in its two Nasdaq ETFs to manage its limit \citep{bs2022motilal}, and fresh overseas subscriptions stopped across the industry from 1 February 2022. In June 2022 SEBI let funds resume, but only up to the room each fund house had on 1 February 2022 \citep{pti2022resume}. Mirae Asset stopped accepting direct creation requests in its three overseas ETFs from 5 January 2024 \citep{mirae2024addendum}, and the pool for foreign-listed ETFs filled in April 2024 \citep{zerodha2024etf}. The Reserve Bank of India has declined requests to raise the limits \citep{bs2023rbi}. Several fund houses shut overseas schemes again between April and July 2026 \citep{outlook2026menu}, and no increase had been announced by 11 November 2026.
+
+Which limit binds the six funds is often misreported. Press accounts blame the US\$1 billion pool for foreign-listed ETFs and date the end of creation to April 2024 \citep[for example][]{vr2026up41}. That pool governs Indian funds that buy ETFs listed abroad. The six funds studied here hold foreign shares directly, so they draw on their fund house's room under the US\$7 billion limit, frozen at its level of 1 February 2022. Three facts support this reading. Motilal Oswal suspended ETF issuance in January 2022, when the pool for foreign-listed ETFs was not yet full \citep{bs2022bind}. Mirae Asset's notice of January 2024 ties its suspension to SEBI's instruction of January 2022, which concerned the US\$7 billion limit. And Mirae stopped creation three months before the pool for foreign-listed ETFs filled.
+
+The distinction has a consequence that the design relies on. Room is counted per fund house, not per scheme, and is freed by redemptions from any of the house's overseas schemes. A fund house can therefore still create ETF units when room appears elsewhere in its range. Creation is rationed by the fund house; it is not prohibited scheme by scheme. How a fund house allocates freed room among its schemes and market makers is not disclosed.
+
+Residents have another legal route abroad. The Liberalised Remittance Scheme allows US\$250,000 a year, with tax collected at source of 20\% on the amount above Rs 10 lakh, creditable against income tax \citep{bt2026lrs}. A premium paid only for access to foreign shares should be bounded by the cost of this route, which is far below the premiums observed.
+
+\subsection{Three price-band regimes}
+Table~\ref{tab:regimes} sets out the regimes. In each, the price $P_{i,t}$ of fund $i$ on day $t$ must satisfy
+\begin{equation}\label{eq:band}
+(1-b_t)\,B_{i,t}\;\le\;P_{i,t}\;\le\;(1+b_t)\,B_{i,t},
+\end{equation}
+where $B_{i,t}$ is the base and $b_t$ the half-width of the band.
+
+\begin{table*}[!t]
+\centering\footnotesize
+\caption{Price-band regimes for equity ETFs}\label{tab:regimes}
+\begin{tabularx}{\textwidth}{L{2.0cm}L{2.3cm}L{3.2cm}YL{3.0cm}}
+\toprule
+Regime & In force & Base $B_{i,t}$ & Band & Bound on the premium\\
+\midrule
+NAV, lagged & To 4 Sep 2026 & Closing NAV of $t-2$ & Fixed $\pm 20\%$ & Level bounded; the bound moves with the two-day change in NAV\\
+Previous close & From 7 Sep 2026 & Average price of the last 30 minutes of $t-1$; else last trade; else latest NAV & $\pm 10\%$; widened by 5\% of the base after a cooling-off of 15 minutes (5 in the last half-hour), at most twice in a direction & None on the level; at most 20\% a day\\
+NAV, previous day & Target: 1 Apr 2027 & Closing NAV of $t-1$ & As above & Level bounded again; a forced jump on the first day\\
+\bottomrule
+\end{tabularx}
+\tabnote{Sources: \citet{sebi2026circular}, paragraphs 2, 4.1, 4.2, 4.4 and 5.1; \citet{nse2026circular}. The average price is volume-weighted. The date on which the first regime began has not been established. Overnight and liquid ETFs keep a fixed 5\% band; gold and silver ETFs start at 6\% and widen in steps of 3\% without a cap.}
+\end{table*}
+
+Under the first regime the base was the closing NAV of two days earlier and the band a fixed 20\%. The lag was not arbitrary. A scheme investing overseas may publish its NAV until 10 a.m.\ on the next business day \citep{sebi2023nav}, after the market has opened, so when the band for day $t$ is set the newest NAV in existence is that of $t-2$ (Figure~\ref{fig:timeline}). In the last week of January 2026 gold and silver moved faster than that base, and exchanges used a more recent one for bullion ETFs as an interim step \citep{sebi2026cp}. SEBI's consultation paper of 13 February 2026 proposed three alternatives: the previous close, the average iNAV of the last half hour, or the previous day's NAV where available. Its evidence was that more than 99.8\% of single-day moves in equity and debt ETFs between April and December 2025 stayed within 10\%. It compared prices with previous closes. It did not discuss distance from NAV, overseas ETFs or constraints on creation.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig2_timeline.pdf}
+\caption{What is known when, for a US-linked fund. Times are Indian Standard Time, with US markets on summer time. The NAV dated $t$ uses the US close of date $t$, which falls ten hours after Indian trading ends, and is published by 10:00 on $t+1$. When the band for day $t$ is set, the newest NAV in existence is that of $t-2$.}\label{fig:timeline}
+\end{figure*}
+
+The circular of 15 June 2026 chose the previous close, defined as the volume-weighted average price of the last 30 minutes, and recorded that the previous day's NAV was operationally difficult to use (paragraph 4.1). Equity and debt ETFs start each day with a 10\% band. When trades occur at 9.90\% from the base a cooling-off of 15 minutes follows, and the band then widens by 5\% of the base, at most twice in each direction and only on the side the price is moving (paragraph 5.1). Paragraph 4.4 directs exchanges and fund houses to resolve jointly the operational difficulties of using the previous day's closing NAV as the base, with effect from 1 April 2027. The circular does not mention overseas ETFs or the creation of units. The start was moved from 1 to 7 September at the exchanges' request \citep{sebi2026ext}, and NSE's implementing circular followed on 1 September \citep{nse2026circular}.
+
+Whether the rule covered international ETFs was unclear to at least one large broker. On 2 September a user of its forum asked, and warned that prices could run without a NAV anchor; staff first answered that the rule did not apply, and corrected the answer on 7 September \citep{zerodha2026forum}. The risk was foreseeable and was foreseen. Both exchanges issued press releases on 25 September. NSE's states that mutual funds have fully used their overseas limits, that the creation of new units in these ETFs is restricted, and that buyers at steep premiums face an abrupt fall in price unrelated to the underlying shares, including if the limits are raised or when the base migrates to NAV under paragraph 4.4 \citep{nse2026press,bse2026press}. NSE repeated the caution on 7 October \citep{reuters2026nse}, and at least one fund house warned investors about its own ETFs \citep{cafemutual2026mirae}.
+
+Cautions were the only instrument used. Other markets with quota-bound or issuance-bound products intervene on the premium itself. China's exchanges and fund managers publish risk warnings and halt trading in cross-border ETFs when premiums are high, usually for an hour and in January 2025 for whole days \citep{bloomberg2025halts}; one fund issued more than a hundred warnings and was halted nearly forty times in the first quarter of 2026 \citep{yicai2026quota}. Korea, after leveraged oil notes traded at several times their indicative value in April 2020 \citep{asiae2020etn}, designates products whose price strays from value beyond a threshold, moves them to single-price auctions and suspends them if the gap persists \citep{fsc2020measures}. These are triggers anchored to value. India's old band was, in effect, a rule of the same family, and the framework that replaced it has none.
+
+\subsection{NAV timing and the indicative NAV}
+A check on seven consecutive NAV dates in September 2026 found that the Nasdaq 100 ETF's NAV dated $t$ moves with the Nasdaq-100 close of US date $t$ and the exchange rate, not with the previous US session. That close comes about ten hours after Indian trading ends. The premium usually quoted, the close over the same-date NAV, therefore divides a price by a value determined later. The error is not small. On 9 November 2026 the Nasdaq Q50 ETF closed at Rs 229.67; the NAV displayed by the exchange at that close was Rs 110.89, and the NAV later published for 9 November was Rs 114.38. The quoted premium for the day is 100.8\%; against what was known at the close it was 107.1\%.
+
+The indicative NAV does not fill the gap. Motilal Oswal states that the iNAV of its two Nasdaq ETFs is the previous day's closing NAV adjusted only for currency movement \citep{motilal2026inav}. Values saved from the fund houses' own pages after the close of 9 November agree: the iNAVs of the two Motilal Oswal funds stood 0.187\% below the previous NAV, the same to three decimal places for both, although the two funds' NAVs for that date turned out 3.2\% and 3.4\% higher. The iNAVs of Mirae Asset's two US-linked funds stood 0.08\% below their previous NAVs, again the same for both, which is what a currency-only adjustment implies; that single observation needs confirming against live sessions. Neither published number is a contemporaneous value.
+
+The timing also bears on April 2027. A US-linked fund's NAV for $t-1$ is not due before the market opens on $t$, so a literal previous-day NAV base cannot be set before trading starts. Exchanges must use an older NAV for these funds, reset the band during the session, or delay. Any NAV anchor restores a ceiling near 20\%.
+
+\subsection{Feeder funds}
+Funds of funds that invest in these ETFs value their holdings at the exchange price \citep{vr2026fof}, so the premium sits inside the feeder's own NAV. The feeders are large holders. Rough figures from public sources put the holding of Mirae Asset's NYSE FANG+ feeder at 43\% to 50\% of that ETF's units.
+
+Feeders were a channel of demand only while they could take new money, and they cannot. Motilal Oswal's Nasdaq 100 fund of funds stopped lump sums in January 2022, stopped registering new instalment plans in December 2024 and paused existing ones from 5 January 2025, citing exhausted overseas limits \citep{et2025motilal}. A feeder that must stop taking money for that reason was being supplied by creation, not by purchases on the exchange. Mirae Asset's feeders accept only instalment plans registered before its January 2024 suspension \citep{mirae2024addendum}. What remains is the other direction. An investor who redeems from a feeder is paid the feeder's NAV, which is struck on the ETF's exchange price, and the feeder sells ETF units on the exchange to pay. Feeder redemptions therefore put units on the market and let long-standing holders cash the premium. Two things follow for the design: float must be measured net of feeder holdings, and feeder flows are expected to be a source of supply when premiums are high.
+
+%=====================================================================
+\section{A Fence and a Speed Limit}\label{sec:framework}
+This section states what a price limit can bound when creation is rationed, as a function of what the limit is anchored to. The results are arithmetic, but they organise the rest of the paper.
+
+Let $V_{i,t}$ be the value of a unit of fund $i$ at the close of day $t$ and $P_{i,t}$ its closing price. The premium is $\pi_{i,t}=\ln(P_{i,t}/V_{i,t})$. With creation rationed, the supply of units is fixed from day to day and price is set by demand. Let $P^{*}_{i,t}$ be the price that would clear the market on day $t$ if no price limit applied, and $\pi^{*}_{i,t}=\ln(P^{*}_{i,t}/V_{i,t})$ the \emph{latent premium}. A daily limit of half-width $b$ around a base $B_{i,t}$ restricts price as in~\eqref{eq:band}.
+
+\begin{definition}
+The limit has a \emph{value anchor} with lag $\ell\ge 1$ if $B_{i,t}=V_{i,t-\ell}$. It has a \emph{price anchor} if $B_{i,t}=P_{i,t-1}$.
+\end{definition}
+
+\begin{proposition}[Fence]\label{prop:fence}
+Under a value anchor with lag $\ell$,
+\begin{equation}\label{eq:fence}
+\pi_{i,t}\;\le\;c_{i,t}\;\equiv\;\ln(1+b)-\ln\!\left(\frac{V_{i,t}}{V_{i,t-\ell}}\right)\qquad\text{for every } t,
+\end{equation}
+whatever the latent premium. The observed premium is $\pi_{i,t}=\min(\pi^{*}_{i,t},\,c_{i,t})$ whenever $\pi^{*}_{i,t}$ lies above the lower limit.
+\end{proposition}
+
+The bound in~\eqref{eq:fence} does not depend on demand or on past prices. It does depend on how value has moved over the lag. With $b=0.2$ and $\ell=2$, the ceiling on the premium is 16.5\% after a two-day rise in value of 3\% and 23.7\% after a fall of 3\%. This is why premiums under the old band were reported between 19\% and 24\%, and it is what makes the premium a censored observation of demand with a censoring point that changes daily for reasons unrelated to demand.
+
+\begin{proposition}[Speed limit]\label{prop:speed}
+Under a price anchor, for any $k\ge 1$,
+\begin{equation}\label{eq:speed}
+\pi_{i,t}-\pi_{i,t-k}\;\le\;k\ln(1+b)-\ln\!\left(\frac{V_{i,t}}{V_{i,t-k}}\right),
+\end{equation}
+and there is no bound on $\pi_{i,t}$. With value constant, a latent premium $\pi^{*}$ is reached from $\pi_{0}$ in at most $\lceil(\pi^{*}-\pi_{0})/\ln(1+b)\rceil$ sessions.
+\end{proposition}
+
+A price anchor bounds the day's return, which is what a control on volatility is for. It says nothing about the distance between price and value, because the base inherits whatever distance already exists. The Nasdaq Q50 ETF needed at least six sessions of 20\% rises to go from its close of Rs 141.93 on 4 September to Rs 396.30; it took nine.
+
+\begin{proposition}[Cliff]\label{prop:cliff}
+Let the anchor change from price to value on day $T$, and let $\Pi=P_{i,T-1}/V_{i,T-\ell}-1$ be the premium of the last close over the anchoring value. If $\Pi>b$, the price on day $T$ must fall by at least
+\begin{equation}\label{eq:cliff}
+1-\frac{1+b}{1+\Pi}
+\end{equation}
+from the previous close. Before $T$ a falling price can lose at most $b$ a day, so bringing the premium inside the new band in advance takes at least $\lceil \ln\!\big((1+\Pi)/(1+b)\big)/\ln\!\big(1/(1-b)\big)\rceil$ sessions of lower-limit closes.
+\end{proposition}
+
+The return to a value anchor is therefore discontinuous for any fund whose premium exceeds the band. At a premium of 86\%, the level of the Nasdaq Q50 ETF on 4 November, the forced fall is 36\%; under the present design, in which the band starts the day at 10\%, the first trade must be at least 41\% below the previous close. Figure~\ref{fig:cliff} plots~\eqref{eq:cliff}. A holder who expects the switch has two ways out: sell before $T$ at a price that others are still willing to pay, or bear the jump. Section~\ref{sec:april} turns this into predictions.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/fig5_cliff.pdf}
+\caption{The cliff. The smallest one-day fall forced on a fund when the band is re-anchored from the previous close to NAV, as a function of its premium on the eve of the switch (Proposition~\ref{prop:cliff}). Circles place the six funds at their premiums over the last known NAV on 9 November 2026 (Table~\ref{tab:cross}).}\label{fig:cliff}
+\end{figure*}
+
+\paragraph{Revealed and induced} Let $T_0$ be the last day of the value anchor. Write the latent premium after the change as the path it would have followed under the law of motion that governed it before the change, plus a remainder:
+\begin{equation}\label{eq:split}
+\pi_{i,t}\;=\;\underbrace{\mathrm{E}\big[\pi^{*}_{i,t}\,\big|\,\mathcal{F}_{T_0}\big]}_{\text{revealed}}\;+\;\underbrace{\pi_{i,t}-\mathrm{E}\big[\pi^{*}_{i,t}\,\big|\,\mathcal{F}_{T_0}\big]}_{\text{induced, plus news}},\qquad t>T_0,
+\end{equation}
+where $\mathcal{F}_{T_0}$ is the information in prices, ceilings and covariates up to $T_0$. The first term is demand that the fence was hiding. The second is zero on average if the change of anchor did nothing but remove the fence. It is positive if the price-anchored band added demand, as a run of upper-limit days would if it drew attention or was extrapolated. Figure~\ref{fig:fence} illustrates both cases with a simulated path. Section~\ref{sec:design} estimates the first term from pre-change data with a censored autoregression and reads the second as the residual.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/fig3_fence_speed.pdf}
+\caption{A fence and a speed limit: simulated illustration. The grey line is a latent premium that follows a first-order autoregression. Before session 0 the price (solid) is the lower of the latent premium and a ceiling that moves with the two-day change in value (dashed). From session 0 the band is anchored to the previous close: the price may move 20\% a day and reaches the latent premium within a few sessions. The dotted line adds buying that responds to the previous day's rise and then decays. The data are simulated and are not estimates for any fund.}\label{fig:fence}
+\end{figure*}
+
+Nothing here says that a value anchor is the better rule. A fence binds when value itself moves faster than a stale base, which is the problem SEBI set out to fix in bullion ETFs, and it prevents the price from showing a shortage that is real. The claim is narrower: the two anchors bound different things, and where arbitrage is blocked the difference is the difference between a premium of 20\% and one of 235\%.
+
+%=====================================================================
+\section{Related Literature}\label{sec:literature}
+\paragraph{ETF pricing and suspended creation} ETF prices deviate from NAV most in funds that hold international or illiquid assets \citep{petajisto2017inefficiencies,engle2006premiums}, in part because NAV is stale when the home market is closed \citep{levy2013overreaction}. The deviation has been split into price discovery and transitory noise \citep{madhavan2016price}, and creation flows have been shown to reveal non-fundamental demand \citep{brown2021etf}. Corrections for stale prices were first built for international mutual funds \citep{goetzmann2001day,zitzewitz2003who}. Most of this work assumes creation is available. \citet{johnson2016essays} documents a premium puzzle in exchange-traded notes and identifies the issuer's suspension of new issuance as its main cause; a volatility note reached a premium near 90\% in 2012 and lost more than half its price in two days when issuance resumed \citep{finra2012etn}. Korea's leveraged oil notes of 2020 \citep{baek2021investment} and China's quota-bound ETFs on foreign indices, which traded more than 40\% above NAV in January 2024 and November 2026 \citep{reuters2024china,caixin2026nov}, are cases of the same kind. In none of them did the anchor of a price limit change while the block stayed in place.
+
+\paragraph{Funds behind investment barriers} Closed-end fund discounts move together and with small-investor sentiment \citep{lee1991investor}, and mispricing is larger where arbitrage is costlier \citep{pontiff1996costly}. Premiums on closed-end country funds fall when restrictions on foreign investment are loosened \citep{bonserneal1990international}, reached 100\% in the Germany Fund in 1989--90 \citep{hardouvelis1994moves}, move with sentiment in the market where the fund trades \citep{bodurtha1995closed}, respond to news mainly when it is salient \citep{klibanoff1998investor} and widen in currency crises \citep{chandar2000why}; later work relates them to measured barriers and liquidity \citep{chan2008market,kim2010investment,davies2017time}. Discounts close when a fund announces that it will open-end \citep{brauer1984open}. Capital controls sustain price gaps for identical assets, in Argentine depositary receipts \citep{auguste2006cross} and across national bitcoin markets \citep{makarov2020trading}. With supply fixed, price is set along a downward-sloping demand curve \citep{shleifer1986demand}, which is steeper where the asset has no close substitute \citep{wurgler2002does}. The present case differs in direction, since the quota is on outbound investment by a domestic fund, and in having a daily published value and a daily price limit.
+
+\paragraph{Price limits} Limits are modelled as a substitute for margin \citep{brennan1986theory} and as a possible source of volatility when traders rush to trade ahead of them \citep{subrahmanyam1994circuit}. Empirically they delay price discovery and move volatility to later days \citep{kim1997price}, and prices accelerate towards a limit as they approach it \citep{cho2003magnet}; \citet{sifat2019circuit,sifat2020survey} survey the field. In China large investors push stocks to the upper limit and sell the next day \citep{chen2019daily}, and upper-limit hits draw first-time individual buyers \citep{seasholes2007predictable}. The widening of the limit on China's ChiNext board from 10\% to 20\% in 2020 has been studied as a natural experiment \citep{wan2022effect,zhang2023price,tang2023price}. A separate line treats limit days as censored observations of an equilibrium price \citep{kodres1993tests,morgan1999limit,wei2002censored}. All of these hold the anchor fixed at the previous close or settlement price and study assets without an observable fundamental. Laboratory markets, where the fundamental is known, still bubble when a rule limits the change in price from the previous period \citep{king1993robustness}, which is what Proposition~\ref{prop:speed} would lead one to expect.
+
+\paragraph{Bubbles, float and known end dates} When shorting is blocked, prices reflect the most optimistic holders \citep{miller1977risk} and can exceed every holder's own valuation because of the option to resell \citep{harrison1978speculative,scheinkman2003overconfidence}; such bubbles come with heavy trading, are larger when float is small and deflate when float expands \citep{hong2006asset}, and turnover explains premia between claims on the same cash flows \citep{mei2009speculative}. Noise traders make the correcting trade risky \citep{delong1990noise}, and visible mispricing survives when shorting is costly \citep{lamont2003can}. Chinese put warrants that were certain to expire worthless traded at high prices with extreme turnover \citep{xiong2011chinese}. Account records from the same episode show buyers extrapolating from their own past gains after a single triggering event, and the authors reject the resale-option account \citep{pearson2021chinese}; see also \citet{li2021winners} and \citet{barberis2018extrapolation}. A bubble cannot survive a known terminal date among rational traders with common knowledge \citep{tirole1982possibility}, yet rational traders may ride one because they cannot coordinate their exit \citep{abreu2003bubbles}, and laboratory markets bubble even when the final value and date are known \citep{smith1988bubbles}. The April 2027 target gives this literature a field setting with a dated regulatory end, and Proposition~\ref{prop:cliff} adds a constraint the models lack: the exit before the date is rationed by the lower limit.
+
+\paragraph{Attention and Indian investors} Individuals buy what catches their attention \citep{barber2008all}, which search volume measures \citep{da2011search}. Studies of Indian ETF pricing use autoregressive models on funds with working creation; the sample of \citet{reddy2020pricing} includes the Motilal Oswal Nasdaq 100 ETF in a period when its creation was open. Account-level research on Indian investors \citep{campbell2019rich} shows what depository data could add to the question of who buys.
+
+As of November 2026 we found journalism and exchange notices on the 2026 episode and no academic study. The search was by web engine, which does not index working-paper archives or Chinese-language journals fully, so the claims of priority above are made to our knowledge.
+
+\input{body2.tex}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+\end{document}

@@ -1,0 +1,108 @@
+Scheme Code;NAV Name;Plan;Option;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Net Asset Value;Date
+Open Ended Schemes ( Money Market )
+
+
+Taurus Mutual Fund
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;01-Jan-2021
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;04-Jan-2021
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;05-Jan-2021
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;06-Jan-2021
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;07-Jan-2021
+139619;Taurus Investor Education Pool - Unclaimed Dividend - Growth;;;;;10.0000;08-Jan-2021
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;01-Jan-2021
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;04-Jan-2021
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;05-Jan-2021
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;06-Jan-2021
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;07-Jan-2021
+139618;Taurus Investor Education Pool - Unclaimed Redemption - Growth;;Growth;;;10.0000;08-Jan-2021
+Open Ended Schemes ( Equity Scheme - Small Cap Fund )
+
+
+Tata Mutual Fund
+145209;TATA Small Cap Fund Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option ;Direct Plan;Reinvestment of Income Distribution cum capital withdrawal option;;INF277K012O9;13.5942;01-Jan-2021
+145209;TATA Small Cap Fund Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option ;Direct Plan;Reinvestment of Income Distribution cum capital withdrawal option;;INF277K012O9;13.7212;04-Jan-2021
+145209;TATA Small Cap Fund Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option ;Direct Plan;Reinvestment of Income Distribution cum capital withdrawal option;;INF277K012O9;13.8121;05-Jan-2021
+145209;TATA Small Cap Fund Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option ;Direct Plan;Reinvestment of Income Distribution cum capital withdrawal option;;INF277K012O9;13.7902;06-Jan-2021
+145209;TATA Small Cap Fund Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option ;Direct Plan;Reinvestment of Income Distribution cum capital withdrawal option;;INF277K012O9;13.8568;07-Jan-2021
+145209;TATA Small Cap Fund Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option ;Direct Plan;Reinvestment of Income Distribution cum capital withdrawal option;;INF277K012O9;13.9523;08-Jan-2021
+Open Ended Schemes ( Debt Scheme - Ultra Short Duration Fund )
+
+
+ICICI Prudential Mutual Fund
+145399;ICICI Prudential Ultra Short Term Fund - Daily IDCW;Regular Plan;Daily IDCW;-;INF109KC1ND7;10.0789;01-Jan-2021
+145399;ICICI Prudential Ultra Short Term Fund - Daily IDCW;Regular Plan;Daily IDCW;-;INF109KC1ND7;10.0789;04-Jan-2021
+145399;ICICI Prudential Ultra Short Term Fund - Daily IDCW;Regular Plan;Daily IDCW;-;INF109KC1ND7;10.0819;05-Jan-2021
+145399;ICICI Prudential Ultra Short Term Fund - Daily IDCW;Regular Plan;Daily IDCW;-;INF109KC1ND7;10.0810;06-Jan-2021
+145399;ICICI Prudential Ultra Short Term Fund - Daily IDCW;Regular Plan;Daily IDCW;-;INF109KC1ND7;10.0806;07-Jan-2021
+145399;ICICI Prudential Ultra Short Term Fund - Daily IDCW;Regular Plan;Daily IDCW;-;INF109KC1ND7;10.0809;08-Jan-2021
+Open Ended Schemes ( Debt Scheme - Low Duration Fund )
+
+
+Franklin Templeton Mutual Fund
+147995;Franklin India Low Duration Fund- Segregated Portfolio 2 - 10.90% Vodafone Idea Ltd (02-Sep-2023) - Monthly - IDCW;Regular Plan;;INF090I01UE5;;0.0000;01-Jan-2021
+147995;Franklin India Low Duration Fund- Segregated Portfolio 2 - 10.90% Vodafone Idea Ltd (02-Sep-2023) - Monthly - IDCW;Regular Plan;;INF090I01UE5;;0.0000;04-Jan-2021
+147995;Franklin India Low Duration Fund- Segregated Portfolio 2 - 10.90% Vodafone Idea Ltd (02-Sep-2023) - Monthly - IDCW;Regular Plan;;INF090I01UE5;;0.0000;05-Jan-2021
+147995;Franklin India Low Duration Fund- Segregated Portfolio 2 - 10.90% Vodafone Idea Ltd (02-Sep-2023) - Monthly - IDCW;Regular Plan;;INF090I01UE5;;0.0000;06-Jan-2021
+147995;Franklin India Low Duration Fund- Segregated Portfolio 2 - 10.90% Vodafone Idea Ltd (02-Sep-2023) - Monthly - IDCW;Regular Plan;;INF090I01UE5;;0.0000;07-Jan-2021
+147995;Franklin India Low Duration Fund- Segregated Portfolio 2 - 10.90% Vodafone Idea Ltd (02-Sep-2023) - Monthly - IDCW;Regular Plan;;INF090I01UE5;;0.0000;08-Jan-2021
+Open Ended Schemes ( Other Scheme - Gold ETF )
+
+
+Nippon India Mutual Fund
+140088;Nippon India ETF Gold BeES;Direct Plan;;INF204KB17I5;;43.7744;01-Jan-2021
+140088;Nippon India ETF Gold BeES;Direct Plan;;INF204KB17I5;;44.6242;04-Jan-2021
+140088;Nippon India ETF Gold BeES;Direct Plan;;INF204KB17I5;;45.0149;05-Jan-2021
+140088;Nippon India ETF Gold BeES;Direct Plan;;INF204KB17I5;;45.1445;06-Jan-2021
+140088;Nippon India ETF Gold BeES;Direct Plan;;INF204KB17I5;;44.4883;07-Jan-2021
+140088;Nippon India ETF Gold BeES;Direct Plan;;INF204KB17I5;;43.9593;08-Jan-2021
+Open Ended Schemes ( Other Scheme - Other  ETFs )
+
+
+Motilal Oswal Mutual Fund
+114984;Motilal Oswal Nasdaq 100 ETF (MOFN100);;;INF247L01AP3;;920.2743;01-Jan-2021
+114984;Motilal Oswal Nasdaq 100 ETF (MOFN100);;;INF247L01AP3;;921.2001;04-Jan-2021
+114984;Motilal Oswal Nasdaq 100 ETF (MOFN100);;;INF247L01AP3;;906.0734;05-Jan-2021
+114984;Motilal Oswal Nasdaq 100 ETF (MOFN100);;;INF247L01AP3;;916.5175;06-Jan-2021
+114984;Motilal Oswal Nasdaq 100 ETF (MOFN100);;;INF247L01AP3;;901.5321;07-Jan-2021
+114984;Motilal Oswal Nasdaq 100 ETF (MOFN100);;;INF247L01AP3;;928.3732;08-Jan-2021
+Nippon India Mutual Fund
+140095;Nippon India ETF Hang Seng BeES;Direct Plan;;INF204KB19I1;;330.7232;01-Jan-2021
+140095;Nippon India ETF Hang Seng BeES;Direct Plan;;INF204KB19I1;;333.1236;04-Jan-2021
+140095;Nippon India ETF Hang Seng BeES;Direct Plan;;INF204KB19I1;;336.2113;05-Jan-2021
+140095;Nippon India ETF Hang Seng BeES;Direct Plan;;INF204KB19I1;;335.8930;06-Jan-2021
+140095;Nippon India ETF Hang Seng BeES;Direct Plan;;INF204KB19I1;;335.7700;07-Jan-2021
+140095;Nippon India ETF Hang Seng BeES;Direct Plan;;INF204KB19I1;;338.9332;08-Jan-2021
+140084;Nippon India ETF Nifty 50 BeES;Direct Plan;;INF204KB14I2;;149.6694;01-Jan-2021
+140084;Nippon India ETF Nifty 50 BeES;Direct Plan;;INF204KB14I2;;150.8892;04-Jan-2021
+140084;Nippon India ETF Nifty 50 BeES;Direct Plan;;INF204KB14I2;;151.5999;05-Jan-2021
+140084;Nippon India ETF Nifty 50 BeES;Direct Plan;;INF204KB14I2;;151.0317;06-Jan-2021
+140084;Nippon India ETF Nifty 50 BeES;Direct Plan;;INF204KB14I2;;150.9368;07-Jan-2021
+140084;Nippon India ETF Nifty 50 BeES;Direct Plan;;INF204KB14I2;;153.1750;08-Jan-2021
+140087;Nippon India ETF Nifty Bank BeES;Direct Plan;;INF204KB15I9;;313.8349;01-Jan-2021
+140087;Nippon India ETF Nifty Bank BeES;Direct Plan;;INF204KB15I9;;313.7004;04-Jan-2021
+140087;Nippon India ETF Nifty Bank BeES;Direct Plan;;INF204KB15I9;;318.8228;05-Jan-2021
+140087;Nippon India ETF Nifty Bank BeES;Direct Plan;;INF204KB15I9;;319.5832;06-Jan-2021
+140087;Nippon India ETF Nifty Bank BeES;Direct Plan;;INF204KB15I9;;321.1700;07-Jan-2021
+140087;Nippon India ETF Nifty Bank BeES;Direct Plan;;INF204KB15I9;;322.4569;08-Jan-2021
+140085;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;INF732E01045;;342.0782;01-Jan-2021
+140085;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;INF732E01045;;347.4573;04-Jan-2021
+140085;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;INF732E01045;;353.0600;05-Jan-2021
+140085;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;INF732E01045;;352.3999;06-Jan-2021
+140085;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;INF732E01045;;353.7952;07-Jan-2021
+140085;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;INF732E01045;;358.4014;08-Jan-2021
+Interval Fund Schemes ( Income )
+
+
+Nippon India Mutual Fund
+105692;NIPPON INDIA QUARTERLY INTERVAL FUND - SERIES II - IDCW Option;Regular Plan;IDCW Option;INF204K01DO3;INF204K01DP0;10.1462;01-Jan-2021
+105692;NIPPON INDIA QUARTERLY INTERVAL FUND - SERIES II - IDCW Option;Regular Plan;IDCW Option;INF204K01DO3;INF204K01DP0;10.1483;04-Jan-2021
+105692;NIPPON INDIA QUARTERLY INTERVAL FUND - SERIES II - IDCW Option;Regular Plan;IDCW Option;INF204K01DO3;INF204K01DP0;10.1491;05-Jan-2021
+105692;NIPPON INDIA QUARTERLY INTERVAL FUND - SERIES II - IDCW Option;Regular Plan;IDCW Option;INF204K01DO3;INF204K01DP0;10.1499;06-Jan-2021
+105692;NIPPON INDIA QUARTERLY INTERVAL FUND - SERIES II - IDCW Option;Regular Plan;IDCW Option;INF204K01DO3;INF204K01DP0;10.1507;07-Jan-2021
+105692;NIPPON INDIA QUARTERLY INTERVAL FUND - SERIES II - IDCW Option;Regular Plan;IDCW Option;INF204K01DO3;INF204K01DP0;10.1515;08-Jan-2021
+120798;Nippon India Yearly Interval Fund - Series 1 - Growth Plan - Growth Option;;;INF204K01M05;-;18.2455;01-Jan-2021
+120798;Nippon India Yearly Interval Fund - Series 1 - Growth Plan - Growth Option;;;INF204K01M05;-;18.2502;04-Jan-2021
+120798;Nippon India Yearly Interval Fund - Series 1 - Growth Plan - Growth Option;;;INF204K01M05;-;18.2512;05-Jan-2021
+120798;Nippon India Yearly Interval Fund - Series 1 - Growth Plan - Growth Option;;;INF204K01M05;-;18.2519;06-Jan-2021
+120798;Nippon India Yearly Interval Fund - Series 1 - Growth Plan - Growth Option;;;INF204K01M05;-;18.2529;07-Jan-2021
+120798;Nippon India Yearly Interval Fund - Series 1 - Growth Plan - Growth Option;;;INF204K01M05;-;18.2540;08-Jan-2021

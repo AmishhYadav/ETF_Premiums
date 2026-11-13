@@ -1,0 +1,80 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
+Open Ended Schemes(Children’s Fund - Childrens' Fund)
+ 
+Axis Mutual Fund
+ 
+135762;INF846K01WO1;-;Axis Children's Fund;Direct Plan;Growth Option;30.9434;09-Nov-2026
+135763;INF846K01WS2;INF846K01WQ6;Axis Children's Fund;Direct Plan;IDCW Option;28.5583;09-Nov-2026
+Open Ended Schemes(Debt Scheme - Credit Risk Fund)
+ 
+Franklin Templeton Mutual Fund
+ 
+148304;INF090I01VZ8;-;Franklin India Credit Risk Fund (No. of segregated portfolios-3);Direct Plan;Growth;0.0000;09-Nov-2026
+Open Ended Schemes(Debt Scheme - Gilt Fund)
+ 
+ICICI Prudential Mutual Fund
+ 
+120607;INF109K012D6;INF109K013D4;ICICI Prudential Gilt Fund;;;12.2962;25-May-2018
+Open Ended Schemes(Debt Scheme - Liquid Fund)
+ 
+Bajaj Finserv Mutual Fund
+ 
+151835;-;INF0QA701029;Bajaj Finserv Liquid Fund;Direct Plan;Daily - IDCW;1034.6939;10-Nov-2026
+Franklin Templeton Mutual Fund
+ 
+Open Ended Schemes(Debt Scheme - Medium Duration Fund)
+118554;INF090I01JI9;-;Franklin India Income Opportunities Fund (no. of segregated portfolios- 2);;;26.5759;12-Dec-2021
+Open Ended Schemes(Exchange Traded Funds (ETFs) - Equity ETF)
+ 
+Mirae Asset Mutual Fund
+ 
+149169;INF769K01HP3;-;Mirae Asset S&P 500 Top 50 ETF;;;64.1521;09-Nov-2026
+Open Ended Schemes(Exchange Traded Funds (ETFs) - ETFs investing overseas)
+ 
+Mirae Asset Mutual Fund
+ 
+149379;INF769K01HS7;-;Mirae Asset Hang Seng TECH ETF;;;16.2818;09-Nov-2026
+148927;INF769K01HF4;-;Mirae Asset NYSE FANG+ ETF;;;159.5331;09-Nov-2026
+ICICI Prudential Mutual Fund
+ 
+Open Ended Schemes(Growth)
+103028;INF109K01DZ0;INF109K01AO0;ICICI Prudential Blended Plan A;;;13.5898;22-Apr-2016
+Open Ended Schemes(Other Scheme - Gold ETF)
+ 
+Nippon India Mutual Fund
+ 
+140088;INF204KB17I5;-;Nippon India ETF Gold BeES;Direct Plan;;116.6176;09-Nov-2026
+Open Ended Schemes(Other Scheme - Index Funds)
+ 
+HDFC Mutual Fund
+ 
+152713;INF179KC1IM3;HDFCNIVODG;HDFC NIFTY100 Low Volatility 30 Index Fund;Direct Plan;Growth Option;10.5339;09-Nov-2026
+Open Ended Schemes(Other Scheme - Other  ETFs)
+ 
+Motilal Oswal Mutual Fund
+ 
+114984;INF247L01AP3;-;Motilal Oswal Nasdaq 100 ETF;;;256.1057;09-Nov-2026
+149438;INF247L01AU3;-;Motilal Oswal Nasdaq Q50 ETF;;;114.3849;09-Nov-2026
+Nippon India Mutual Fund
+ 
+140095;INF204KB19I1;-;Nippon India ETF Hang Seng BeES;Direct Plan;;436.5722;09-Nov-2026
+140084;INF204KB14I2;-;Nippon India ETF Nifty 50 BeES;Direct Plan;;285.8134;09-Nov-2026
+140087;INF204KB15I9;-;Nippon India ETF Nifty Bank BeES;Direct Plan;;619.1863;09-Nov-2026
+140085;INF732E01045;-;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;788.1718;09-Nov-2026
+149758;INF204KC1402;-;Nippon India Silver ETF;Direct Plan;;176.7341;09-Nov-2026
+Interval Fund Schemes(Income)
+ 
+Kotak Mahindra Mutual Fund
+ 
+146839;-;INF174KA1DD0;Kotak Monthly Interval Plan Series 4;;;10.0087785;17-Apr-2019
+Close Ended Schemes(Income)
+ 
+IL&FS Mutual Fund (IDF)
+ 
+130565;INF613Q01025;Redeemed;IL&FS Infrastructure Debt Fund Series 1A;;;1680494.0463;31-Dec-2018
+148397;INF613Q01140;-;IL&FS Infrastructure Debt Fund Series 2A;;;2004851.5347;30-Sep-2026
+UTI Mutual Fund
+ 
+Close Ended Schemes(Income/Debt Oriented Schemes - Other Debt Scheme)
+106186;INF789F01FE9;INF789F01FF6;UTI Annual Interval Fund - I;Regular Plan;IDCW;11.0496;09-Nov-2026
+

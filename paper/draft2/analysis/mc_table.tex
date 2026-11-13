@@ -1,0 +1,32 @@
+\begin{table}[!t]
+\centering\footnotesize\setlength{\tabcolsep}{4.2pt}
+\caption{Monte Carlo: recovering a known hidden premium and testing for induced demand}\label{tab:mc}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+ & \multicolumn{3}{c}{35\% of days capped} & \multicolumn{3}{c}{60\% of days capped} & \multicolumn{3}{c}{80\% of days capped}\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+ & Ignored & Fixed & Moving & Ignored & Fixed & Moving & Ignored & Fixed & Moving\\
+\midrule
+\multicolumn{10}{l}{\emph{A. Hidden premium on the last capped day, percentage points}}\\
+True value, mean & \multicolumn{3}{c}{29.4} & \multicolumn{3}{c}{31.9} & \multicolumn{3}{c}{37.6}\\
+Mean error & $-$9.8 & 2.7 & 1.3 & $-$12.2 & 3.0 & 1.3 & $-$17.8 & 1.6 & $-$0.7\\
+Root mean squared error & 12.7 & 9.2 & 7.6 & 15.3 & 11.8 & 11.1 & 22.2 & 13.7 & 13.9\\
+Estimated $\rho$ (true 0.985) & 0.954 & 0.967 & 0.979 & 0.874 & 0.959 & 0.972 & 0.758 & 0.959 & 0.970\\
+\addlinespace
+\multicolumn{10}{l}{\emph{B. Realised premium above the 90\% forecast band, \% of replications}}\\
+No induced demand, plug-in & 30.4 & 7.5 & 6.2 & 69.6 & 12.5 & 12.1 & 88.8 & 15.0 & 18.3\\
+No induced demand (nominal 5) & 26.2 & 6.7 & 5.8 & 66.7 & 10.4 & 10.4 & 88.8 & 12.1 & 15.4\\
+Induced, 30 log points & 100.0 & 87.9 & 89.6 & 100.0 & 88.3 & 91.7 & 100.0 & 88.3 & 95.0\\
+Induced, 60 log points & 100.0 & 98.3 & 99.2 & 100.0 & 98.8 & 99.2 & 100.0 & 98.8 & 98.8\\
+\addlinespace
+\multicolumn{10}{l}{\emph{C. Realised premium below the band, no induced demand (nominal 5)}}\\
+\% of replications & 3.3 & 3.8 & 6.7 & 6.2 & 7.1 & 7.9 & 5.0 & 4.2 & 5.0\\
+\addlinespace
+\multicolumn{10}{l}{\emph{D. Induced share, median, \%}}\\
+No induced demand: true 0 & 28 & $-$11 & $-$18 & 39 & $-$1 & $-$2 & 47 & $-$2 & 3\\
+30 log points: true 66/61/57 & 76 & 63 & 61 & 77 & 60 & 61 & 77 & 56 & 59\\
+60 log points: true 82/79/76 & 87 & 81 & 80 & 87 & 79 & 79 & 87 & 75 & 77\\
+\bottomrule
+\end{tabular}
+\tabnote{240 replications per design; 400 pre-change sessions; forecast window sessions 16 to 40. `Ignored': autoregression on the observed premium. `Fixed': censored autoregression on the premium over the band's base with ceiling $\ln 1.2$. `Moving': censored autoregression on the fair-value premium with the day's ceiling. Panel A compares the estimated hidden premium on the last pre-change day, which is capped in every replication, with the true latent premium. Panels B and C count replications in which the realised average log premium lies outside the 90\% forecast band; except in the row marked plug-in, the band allows for parameter uncertainty by drawing parameters from their estimated asymptotic distribution. In Panel D the three true values are for the three designs in order. Simulated data; details in Appendix~\ref{app:mc}.}
+\end{table}

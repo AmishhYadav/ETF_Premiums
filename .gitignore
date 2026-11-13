@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+
+# Data: raw downloads are immutable and local-only; Bloomberg must never be committed
+data/raw/
+data/clean/
+data/state/
+exports/
+logs/
+*.duckdb
+
+# OS
+.DS_Store
+
+# Research plan PDF stays out of git until Amish decides whether it is public
+India ETF Premiums Research & Project Plan.pdf
+
+# Research dossier: same rule as the plan PDF until Amish decides
+ETF Premiums Research Dossier.pdf
