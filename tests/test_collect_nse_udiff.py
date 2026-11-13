@@ -208,3 +208,22 @@ def test_fetch_404_propagates_and_stores_nothing(tmp_path):
     with pytest.raises(SourceNotFoundError):
         udiff.fetch(client, store, DAY)
     assert not store.root.exists()
+
+
+def test_early_2024_header_with_trailing_comma_parses(inner_csv, df):
+    # Files of 2024-01-01 and 2024-01-02 end the header line with an extra
+    # comma (one empty column name) that data rows do not have.
+    text = inner_csv.decode("utf-8-sig")
+    header, rest = text.split("\n", 1)
+    patched = (header.rstrip("\r") + ",\n" + rest).encode()
+    out = udiff.parse(make_zip({"x.csv": patched}), source_file="f.zip")
+    assert len(out) == len(df)
+    assert out["close"].tolist() == df["close"].tolist()
+
+
+def test_data_row_width_mismatch_still_fails(inner_csv):
+    text = inner_csv.decode("utf-8-sig")
+    header, first, rest = text.split("\n", 2)
+    broken = (header + "\n" + first.rstrip("\r") + ",extra\n" + rest).encode()
+    with pytest.raises(ValueError, match="fields"):
+        udiff.parse(make_zip({"x.csv": broken}), source_file="f.zip")

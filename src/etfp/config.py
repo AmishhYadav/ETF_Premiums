@@ -86,7 +86,11 @@ class Etf(_Frozen):
     group: Literal["blocked", "unclear", "possibly_open", "control", "bullion"]
     tracked: bool  # True: gets fair value, iNAV snapshots and a dashboard row
     futures_proxy: Literal["NQ", "ES"] | None = None
-    creation_unit_size: int | None = None  # units per creation/redemption basket
+    # Units in one creation/redemption basket (a market maker hands in a whole
+    # number of baskets and gets that many baskets' worth of new units). None =
+    # not known yet; a tracked foreign-market ETF must then list
+    # "creation_unit_size" in ``verify`` so the gap is visible, not forgotten.
+    creation_unit_size: int | None = Field(default=None, gt=0)
     bloomberg: Bloomberg = Field(default_factory=Bloomberg)
     notes: str | None = None
     verify: list[str] = Field(default_factory=list)  # field names not yet confirmed
@@ -97,6 +101,20 @@ class Etf(_Frozen):
         if not _ISIN_RE.match(value):
             raise ValueError(f"ISIN {value!r} does not match ^IN[A-Z0-9]{{10}}$")
         return value
+
+    @model_validator(mode="after")
+    def _unknown_creation_unit_is_flagged(self) -> Etf:
+        if (
+            self.creation_unit_size is None
+            and self.tracked
+            and self.underlying_market != "IN"
+            and "creation_unit_size" not in self.verify
+        ):
+            raise ValueError(
+                f"{self.symbol}: creation_unit_size is unknown, so 'creation_unit_size' "
+                "must be listed in its verify list (request R6)"
+            )
+        return self
 
     @model_validator(mode="after")
     def _currency_matches_market(self) -> Etf:
@@ -169,6 +187,13 @@ class BandSpec(_Frozen):
     cooling_off_minutes: int | None = Field(default=None, gt=0)
     cooling_off_minutes_last_30: int | None = Field(default=None, gt=0)
     trigger_pct: float | None = Field(default=None, gt=0)  # distance from base that triggers
+    # The draft rule asked for a "breadth test" before widening (at least 50 trades from
+    # 10 client codes and 3 members on each side at the limit). The final SEBI circular
+    # dropped it (request R7), so equity says False; None = not recorded for this class.
+    breadth_test: bool | None = None
+    # True: only the side that was hit moves (a trade at +9.90% widens the upper limit
+    # and leaves the lower limit alone). None = not recorded for this class.
+    widen_moving_side_only: bool | None = None
     pre_open_call_auction: bool = False
 
     def max_pct(self) -> float | None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from datetime import date, time
 from pathlib import Path
 
@@ -268,7 +269,8 @@ def test_real_rules_file_loads():
     assert rules.rounding.band_low == "up"
     assert rules.rounding.band_high == "down"
     assert rules.at_band_tolerance == pytest.approx(0.001)
-    assert len(rules.sources) == 3
+    assert len(rules.sources) == 4
+    assert any("NSE/CMTR/76101" in src for src in rules.sources)
     equity = rules.regime_for(date(2026, 11, 9)).band_spec("equity")
     assert equity.initial_pct == pytest.approx(10)
     assert equity.step_pct == pytest.approx(5)
@@ -462,3 +464,101 @@ def test_unquoted_time_is_rejected(tmp_path: Path):
 def test_missing_file_is_clear(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="config file not found"):
         load_collect_settings(tmp_path / "nope.yaml")
+
+
+# --------------------------------------------------------------------------
+# Creation-unit sizes (request R6)
+# --------------------------------------------------------------------------
+def test_creation_unit_sizes_from_scheme_documents():
+    u = load_etfs()
+    assert u.by_symbol("MONQ50").creation_unit_size == 600_000
+    assert u.by_symbol("MON100").creation_unit_size == 250_000
+    for symbol in ("MASPTOP50", "MAFANG"):  # not read from the Mirae factsheets yet
+        etf = u.by_symbol(symbol)
+        assert etf.creation_unit_size is None
+        assert "creation_unit_size" in etf.verify
+    for symbol in ("MONQ50", "MON100"):  # confirmed: not on the to-check list
+        assert "creation_unit_size" not in u.by_symbol(symbol).verify
+
+
+# DECISIONS D7: units outstanding (IssdCptl) read from the NSE security master.
+D7_UNITS = {
+    "MONQ50": [3_275_018, 8_075_018, 14_675_018, 14_675_018, 14_675_018],
+    "MON100": [498_384_740, 504_884_740, 504_134_740, 504_134_740, 504_134_740],
+    "MAHKTECH": [192_911_852, 192_911_852, 193_711_852, 193_711_852, 193_711_852],
+    "HNGSNGBEES": [19_111_680, 23_586_680, 23_586_680, 23_586_680, 23_586_680],
+}
+
+
+@pytest.mark.parametrize("symbol", sorted(D7_UNITS))
+def test_d7_unit_changes_are_whole_numbers_of_creation_units(symbol: str):
+    size = load_etfs().by_symbol(symbol).creation_unit_size
+    assert size
+    series = D7_UNITS[symbol]
+    changes = [b - a for a, b in itertools.pairwise(series)]
+    assert any(changes)  # the test must have something to check
+    assert all(change % size == 0 for change in changes), (symbol, size, changes)
+
+
+def test_d7_monq50_baskets_are_8_then_11():
+    size = load_etfs().by_symbol("MONQ50").creation_unit_size
+    assert (8_075_018 - 3_275_018) == 4_800_000 == 8 * size
+    assert (14_675_018 - 8_075_018) == 6_600_000 == 11 * size
+
+
+def test_a_wrong_size_would_be_caught_by_the_d7_check():
+    # Mutation check: a wrong size (700,000) must fail the whole-basket test above.
+    series = D7_UNITS["MONQ50"]
+    changes = [b - a for a, b in itertools.pairwise(series)]
+    assert not all(change % 700_000 == 0 for change in changes)
+
+
+def test_unknown_size_on_a_tracked_foreign_etf_must_be_flagged(tmp_path: Path):
+    def text(extra: str) -> str:
+        return (
+            etf_yaml({"symbol": "USA", "isin": "INF000000002", "code": 2,
+                      "market": "US", "currency": "USD"})
+            .replace("tracked: false", "tracked: true")
+            + extra
+        )  # fmt: skip
+
+    with pytest.raises(ValueError, match="creation_unit_size"):
+        load_etfs(write(tmp_path, text("")))
+    ok = load_etfs(write(tmp_path, text("    verify: [creation_unit_size]\n"), "ok.yaml"))
+    assert ok.by_symbol("USA").creation_unit_size is None
+
+
+def test_domestic_or_untracked_etf_may_leave_size_unknown(tmp_path: Path):
+    u = load_etfs(write(tmp_path, etf_yaml({"symbol": "AAA"})))
+    assert u.by_symbol("AAA").creation_unit_size is None
+
+
+@pytest.mark.parametrize("bad", ["0", "-5"])
+def test_creation_unit_size_must_be_positive(tmp_path: Path, bad: str):
+    path = write(tmp_path, etf_yaml({"symbol": "AAA"}, extra=f"    creation_unit_size: {bad}\n"))
+    with pytest.raises(ValueError, match="creation_unit_size"):
+        load_etfs(path)
+
+
+# --------------------------------------------------------------------------
+# Band rules: history and widening (request R7)
+# --------------------------------------------------------------------------
+def test_nav_t2_start_is_marked_unverified():
+    rules = load_rules()
+    nav_t2 = rules.regimes[0]
+    assert nav_t2.name == "nav_t2" and nav_t2.start is None
+    assert "start" in nav_t2.verify
+
+
+def test_widening_rule_has_no_breadth_test():
+    rules = load_rules()
+    for name in ("prev_close", "nav_t1"):
+        equity = next(r for r in rules.regimes if r.name == name).band_spec("equity")
+        assert equity.breadth_test is False
+        assert equity.widen_moving_side_only is True
+        assert equity.trigger_pct == pytest.approx(9.90)
+        assert equity.step_pct == pytest.approx(5)
+        assert equity.max_widenings == 2
+        assert (equity.cooling_off_minutes, equity.cooling_off_minutes_last_30) == (15, 5)
+    gold = rules.regime_for(date(2026, 11, 9)).band_spec("gold")
+    assert gold.breadth_test is None  # not recorded for gold/silver

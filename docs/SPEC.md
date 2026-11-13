@@ -67,30 +67,32 @@ Add 3–5 more domestic equity ETFs as controls, plus GOLDBEES and SILVERBEES fo
 
 ## 6. Calculations (`src/etfp/features/`)
 
-### 6.1 NAV alignment
-- Indian ETFs strike NAV for date *t* using the latest available closing prices of the underlying.
-- **US-linked ETFs:** NAV(t) reflects the US close of the previous US trading day — stale by Indian market close (15:30 IST).
-- **HK-linked ETFs:** Hong Kong closes 16:00 HKT = 13:30 IST, so NAV(t) is nearly current.
-- When the US market is closed (US holiday), NAV for the next Indian day does not move (e.g. 7 Sep 2026, Labor Day).
-- **VERIFY** NAV timing against a few days of data: does NAV(t) change exactly with the prior US close × FX?
+### 6.1 NAV alignment (rewritten 2026-11-13 to match DECISIONS D10, D18)
+- A fund publishes one NAV per date. The NAV dated *d* is struck from the close of the last underlying-market session on or before *d*; on an underlying-market holiday it is carried forward.
+- **US-linked ETFs:** the NAV dated *t* uses the US close of *t*, about 10 hours after the Indian close on *t*, and is published by 10:00 IST on *t+1* (SEBI circular of 29 Mar 2023). At the Indian close on *t* the freshest known NAV is normally the one dated *t−1*.
+- **HK-linked ETFs:** Hong Kong closes 13:30 IST, before the Indian close, so the NAV dated *t* is already struck at 15:30 IST (timing still VERIFY).
+- For each Indian trading day *t* store: `nav_same_date` (NAV dated *t*), `nav_known_at_close` with `nav_known_date` and `nav_known_underlying_date` (the freshest NAV whose underlying close is at or before 15:30 IST on *t*; on a US holiday this is the carried-forward NAV dated *t*), `nav_publication_lag_days` (calendar days from `nav_known_date` to *t*) and `nav_t2` (NAV dated two Indian trading days earlier, the old band base).
+- The rule is re-estimated per ETF and year because it may differ before 1 Jul 2023 or by AMC.
 
-### 6.2 Fair value (moves NAV to the Indian close)
+### 6.2 Fair value (moves the freshest known NAV to the Indian close)
 
 ```
-FV_t = NAV_t × (F_t[15:30 IST] / F_US_close_used_in_NAV) × (S_t[15:30 IST] / S_used_in_NAV)
+FV_t = NAV_a × (F_t[15:30 IST] / F[US close of a]) × (S_t[15:30 IST] / S_a)
 ```
-- F = front-month index future (E-mini Nasdaq-100 for Nasdaq ETFs; E-mini S&P 500 as proxy for S&P Top 50 and FANG+ — document proxies in DECISIONS.md).
+- *a* = `nav_known_underlying_date`; NAV_a = `nav_known_at_close`.
+- F = front-month index future (E-mini Nasdaq-100 for Nasdaq ETFs; E-mini S&P 500 as proxy for S&P Top 50 and FANG+ — proxies logged in DECISIONS.md).
 - S = rupee exchange rate (USD/INR or HKD/INR).
-- For HK ETFs: futures term = 1 (or HSI futures if needed), FX term only.
-- If futures missing → fall back to FV = NAV and set `fv_method = 'nav_only'`.
+- For HK ETFs: futures term = 1, FX term only.
+- If any required input is missing → FV = NAV_a and `fv_method = 'nav_only'`; otherwise `'bloomberg'` or `'free_futures'` (no NAV → `'no_nav'`).
 - **Tests:** hand-computed example: NAV 100, F used 20,000, F at 15:30 20,200, S used 84.00, S at 15:30 84.42 → FV = 100 × 1.01 × 1.005 = 101.505.
 
 ### 6.3 Premium measures (store all)
-- `prem_raw` = close / NAV_t − 1 (what the press quotes)
-- `prem_band_ref` = close / NAV_{t−2} − 1 (what the pre-Sep-2026 band constrained; T-2 = two Indian trading days earlier)
+- `prem_raw` = close / `nav_same_date` − 1 (what the press quotes; non-synchronous, because that NAV is struck after the Indian close)
+- `prem_nav_known` = close / `nav_known_at_close` − 1
+- `prem_band_ref` = close / `nav_t2` − 1 (what the pre-Sep-2026 band constrained; T-2 = two Indian trading days earlier)
 - `prem_fv` = close / FV_t − 1, and `log_prem_fv` = ln(close / FV_t)
 - `prem_inav` = last_price / iNAV − 1 (snapshots only)
-- `x_april` = ln(close / (1.2 × FV_t)) — excess over the April 2027 cap; > 0 means price exceeds what will be allowed after 1 Apr 2027.
+- `x_april` = ln(close / (1.2 × FV_t)) — excess over the April 2027 cap; > 0 means price exceeds what will be allowed after 1 Apr 2027. `x_april_nav_known` uses `nav_known_at_close` instead of FV (BLUEPRINT definition); both kept until Amish picks one (D20).
 
 ### 6.4 Price band calculator
 Given date and regime (from `config/rules.yaml`), return `base_price`, `band_low`, `band_high` (initial and maximum after widening), and flag `closed_at_upper` / `closed_at_lower` (close within 0.1% of the limit — tolerance in config).

@@ -13,6 +13,12 @@
 #   creation_unit_size  units in one creation/redemption basket.
 #   verify        names of fields not yet confirmed against a primary source.
 #
+# creation_unit_size (request R6): MONQ50 600,000 and MON100 250,000 come from the
+# scheme documents. MASPTOP50 and MAFANG are null until read from the latest Mirae
+# factsheets; they stay in `verify`. Check against DECISIONS D7: every change in
+# MONQ50's units outstanding is a whole number of 600,000-unit baskets
+# (8 and 11), which supports both the size and the reading of IssdCptl.
+#
 # ISINs and AMFI scheme codes below were checked on 2026-11-10 against the NSE ETF
 # list (eq_etfseclist.csv) and the AMFI daily NAV file (NAVAll.txt, matched by ISIN).
 # Bloomberg tickers are empty until the licensed data is mapped.
@@ -30,7 +36,7 @@ etfs:
     group: blocked
     tracked: true
     futures_proxy: NQ
-    creation_unit_size: null
+    creation_unit_size: 600000
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: null
     verify: [bloomberg]
@@ -47,7 +53,7 @@ etfs:
     group: unclear
     tracked: true
     futures_proxy: NQ
-    creation_unit_size: null
+    creation_unit_size: 250000
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: null
     verify: [bloomberg]
@@ -67,7 +73,7 @@ etfs:
     creation_unit_size: null
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: "E-mini S&P 500 (ES) is a proxy for the S&P 500 Top 50 (SPEC 6.2)."
-    verify: [bloomberg, futures_proxy]
+    verify: [bloomberg, futures_proxy, creation_unit_size]
 
   - symbol: MAFANG
     name: "Mirae Asset NYSE FANG+ ETF"
@@ -84,7 +90,7 @@ etfs:
     creation_unit_size: null
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: "E-mini S&P 500 (ES) is a proxy for NYSE FANG+ (SPEC 6.2)."
-    verify: [bloomberg, futures_proxy]
+    verify: [bloomberg, futures_proxy, creation_unit_size]
 
   - symbol: MAHKTECH
     name: "Mirae Asset Hang Seng TECH ETF"

@@ -1,0 +1,7 @@
+event_id,date,ts_ist,type,category,direction,symbols,first_tradable_session,description,url,source_primary,verified
+sebi_2026-06-15_band_circular,2026-06-15,,rule,rule,,,,SEBI circular HO/47/11/11(1)2026-MRD-POD3/I/13804/2026: ETF price bands move to a dynamic band around the previous close (para 5.1: widening needs only trades at 9.90% from the base and a cooling-off; no breadth test).,,,false
+nse_2026-09-01_circular_122,2026-09-01,,rule,rule,,,,NSE circular NSE/CMTR/76101 (ref 122/2026) implements the SEBI price-band circular (dated 1 Sep 2026).,,,false
+rule_2026-09-07_prev_close_regime,2026-09-07,,rule,rule,,,2026-09-07,"Price-band regime prev_close starts: band base = previous close, +/-10% widening to +/-20% (DECISIONS D5). Last session of the old NAV(T-2) base was 2026-09-04.",,,false
+bse_2026-09-25_caution,2026-09-25,,warning,caution,,,2026-09-28,"BSE caution about the premium of international ETFs, reported after the close on a Friday, so the first session that could react is Monday 2026-09-28. Affected symbols and the wording of the caution are to be filled from the primary document.",,,false
+motilal_fof_2024-12-10_new_sip_stop,2024-12-10,,suspension,fund_status,,MON100,,"Motilal Oswal Nasdaq 100 Fund of Funds stops accepting new SIP registrations, citing exhausted overseas investment limits.",,,false
+motilal_fof_2024-12-24_sip_pause_addendum,2024-12-24,,suspension,amc_notice,,MON100,,"Addendum dated 2024-12-24: Motilal Oswal Nasdaq 100 Fund of Funds pauses existing SIPs from 2025-01-05, citing exhausted overseas investment limits.",,,false

@@ -187,6 +187,12 @@ def parse(content: bytes, *, source_file: str) -> pd.DataFrame:
                 continue  # blank line: not a data row
             fields = [f.strip() for f in fields]
             if header is None:
+                # Early-2024 files (seen on 2024-01-01 and 2024-01-02) end the
+                # header with a trailing comma that the data rows lack, which
+                # makes one empty column name. Drop trailing empty names so
+                # those files parse; any other width mismatch still fails.
+                while fields and fields[-1] == "":
+                    fields.pop()
                 header = fields
                 missing = [c for c in _REQUIRED if c not in header]
                 if missing:

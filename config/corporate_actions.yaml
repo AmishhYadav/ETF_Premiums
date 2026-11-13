@@ -1,0 +1,33 @@
+# Corporate actions that change the unit of an ETF (SPEC D9). Parsed by
+# etfp.corporate_actions.load_corporate_actions.
+#
+# Plain-words glossary
+#   split      one old unit is replaced by `ratio` new units. A 10:1 split of a
+#              unit priced at Rs 1,000 gives 10 units priced at about Rs 100 each.
+#              Nothing real changes (the holder owns the same value), but every
+#              raw price and NAV before the split is on a "10x too big" scale,
+#              so a chart of raw prices shows a fake 90% crash.
+#   ex_date    first trading day on which the EXCHANGE price is on the new scale.
+#   nav_ex_date  first date on which the fund house's published NAV (AMFI) is on
+#              the new scale. It can differ from ex_date: check the raw data.
+#              Defaults to ex_date when left out.
+#   ratio      new units per old unit (10 for a 10:1 split).
+#   verified   true only when the dates were confirmed against raw files.
+#
+# Adjusted value = raw value x adjustment factor, which puts every date on the
+# CURRENT unit scale (see etfp.corporate_actions.adjustment_factor).
+
+actions:
+  - symbol: MON100
+    type: split
+    ratio: 10
+    ex_date: 2021-06-17
+    nav_ex_date: 2021-06-21
+    verified: true
+    source: >-
+      Checked 2026-11-13 against raw data, not against the NSE circular text.
+      Price: NSE bhavcopy 2021-06-16 close 1015.62, then 2021-06-17 open 107.00 and close
+      100.87 (its PREV_CLOSE column stays unadjusted at 1015.62 on the ex-date). NAV: AMFI
+      scheme 114984 history shows 1010.9493 (15 Jun), 1005.5588 (16 Jun), 1001.7978
+      (17 Jun), 1025.4998 (18 Jun) on the OLD scale and 101.5224 on 21 Jun 2021 on the NEW
+      scale, so the NAV changed scale four days after the price. DECISIONS D9.

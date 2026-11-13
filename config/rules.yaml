@@ -18,14 +18,23 @@
 regimes:
   - name: nav_t2
     # No start date: applies to all history before the change.
+    # VERIFY (request R7): the day the T-2 NAV base started is NOT known. Our data
+    # begins in Jan 2021 and the T-2 rule may only date from about 2022; before it
+    # a different base (for example the previous close) may have applied. Until the
+    # exchange circular that introduced it is found, the open start below is a
+    # placeholder, not a fact. `regime_inferred` (request R10) tests it from prices.
     end: 2026-09-04          # last day of the old rule (inclusive)
     base: nav_t2             # closing NAV of T-2 (two Indian trading days before the day)
     status: confirmed        # confirmed from official NSE data
-    description: "Base = closing NAV of T-2. Fixed +/-20% for every asset class."
+    description: >-
+      Base = closing NAV of T-2. Fixed +/-20% for every asset class. The START of
+      this regime is unverified (see the VERIFY note above).
     bands:
       equity: {initial_pct: 20, step_pct: 0, max_widenings: 0}
       gold:   {initial_pct: 20, step_pct: 0, max_widenings: 0}
       silver: {initial_pct: 20, step_pct: 0, max_widenings: 0}
+    verify:
+      - start    # date the T-2 NAV base began is unknown; earlier regime unknown
 
   - name: prev_close
     start: 2026-09-07        # 5-6 Sep 2026 are a weekend, so no regime covers them
@@ -38,6 +47,10 @@ regimes:
       were no such trades, the last traded price; if none, the latest NAV.
       Equity/debt ETFs start at +/-10% and widen by 5% of base after a
       cooling-off pause, at most twice per direction (so +/-20% at most).
+      Widening needs only trades at 9.90% from the base and the cooling-off
+      (15 minutes, 5 in the last half hour); the draft "breadth test" (50 trades
+      from 10 client codes and 3 members per side) was dropped from the final
+      circular (para 5.1). Only the side that was hit widens.
       Gold/silver ETFs start at +/-6% and widen in 3% steps with no cap, and
       have a pre-open call auction.
     bands:
@@ -48,6 +61,8 @@ regimes:
         cooling_off_minutes: 15   # pause before a widening takes effect
         cooling_off_minutes_last_30: 5   # shorter pause in the last 30 minutes
         trigger_pct: 9.90         # a trade at or beyond 9.90% from base triggers a widening
+        breadth_test: false       # final circular dropped the "50 trades / 10 clients / 3 members" test
+        widen_moving_side_only: true   # only the side that was hit widens (5% of base)
         pre_open_call_auction: false
       gold:
         initial_pct: 6
@@ -78,6 +93,8 @@ regimes:
         cooling_off_minutes: 15
         cooling_off_minutes_last_30: 5
         trigger_pct: 9.90
+        breadth_test: false
+        widen_moving_side_only: true
         pre_open_call_auction: false
       gold:
         initial_pct: 6
@@ -110,6 +127,7 @@ rounding:
 at_band_tolerance: 0.001
 
 sources:
-  - "SEBI circular HO/47/11/11(1)2026-MRD-POD3/I/13804/2026 (15 Jun 2026)"
+  - "SEBI circular HO/47/11/11(1)2026-MRD-POD3/I/13804/2026 (15 Jun 2026), para 5.1: no breadth test"
   - "SEBI extension circular of 28 Aug 2026"
   - "NSE circular 122/2026 (1 Sep 2026)"
+  - "NSE circular NSE/CMTR/76101 (ref 122/2026, 1 Sep 2026): implements the SEBI circular"

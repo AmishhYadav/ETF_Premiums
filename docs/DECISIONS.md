@@ -127,6 +127,58 @@ What is not confirmed:
 - Behaviour during market hours, and whether the sites' bot protection reacts to a script polling every 15 minutes, are untested.
 - None of these endpoints carry market price, order-book depth or total buy/sell quantity. Those still need the NSE quote capture (D12).
 
+## 2026-11-13 — Build session (clean layer, features, collectors)
+
+### D16. Recorder scheduled
+The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots exist for 11–13 Nov. Installed `~/Library/LaunchAgents/com.etfp.inav.plist` on 13 Nov (Amish approved); first run Mon 16 Nov 09:10 IST. The 11–13 Nov gap is permanent and is counted in the manifest.
+
+### D17. Clean layer decisions
+- **Storage.** `src/etfp/store.py`: one Parquet file per table in `data/clean/` plus `data/clean/etf.duckdb` rebuilt from the Parquet. Each table has a registered schema and primary key; a duplicate key, an empty key or an empty `source_file` stops the write and nothing is written. Do not run a build while the dashboard holds the DuckDB file open.
+- **`band_official.session_date`** = next NSE session after the file date, from the trading calendar. The file dated 9 Nov 2026 applies to **11 Nov** because 10 Nov was an NSE holiday (D11). This refines D4 ("next session", not "next day").
+- **NAV duplicates.** AMFI history beats `NAVAll.txt`; within a kind, the later download, then the higher raw version, wins. A numeric disagreement logs a warning naming both files. `nav_source` records the winner. "N.A." NAVs are skipped and logged, never set to 0. Scheme code → symbol from `config/etfs.yaml` only.
+- **Revised raw files.** When a raw file has versions (`.v2`, …), the highest is used and its name is in `source_file`.
+- **`prices_daily`.** All ETFs on the NSE list, not only tracked ones. Full bhavcopy (D1) is primary; UDiFF overlays ISIN, settlement price and exact rupee value (`value_source` says which). Close differences > 0.005 between them log a warning. One series per symbol-day: EQ, else the busiest. A bhavcopy whose internal date differs from its folder date stops the build. No `vwap_last30` column: `close` already is that VWAP (D3); `avg_price` is the whole-day VWAP.
+- **Security master.** Series EQ, else BE. File date must match file name and folder. "No Band" keeps a row with empty limits. `units_daily.date` is the file date as published.
+- **`inav_snapshots`.** Long format, one row per source per fetch. `ts` is our fetch time (IST) from the file name (D15); fund-house stamps kept as text in `amc_ts_raw`, NSE's own time in `data_ts`. Missing values are NA, never 0. Nippon rows are stored but untrusted (D15) — filter on `source`.
+- **Corporate actions.** Clean prices and NAVs are unadjusted; adjustment happens through `config/corporate_actions.yaml` (MON100 10:1 split, ex-date 2021-06-17).
+- OPEN: the NSE quote reader (`parse_nse_quote`) is written against an assumed JSON shape (`marketDeptOrderBook.totalBuyQuantity`, `bid[]`, `ask[]`, …) and must be checked against the first real capture (D12).
+
+### D18. NAV alignment implemented (`features/nav_align.py`); SPEC §6.1–6.3 rewritten
+- Rule: the NAV dated *d* is "known" at the Indian close of *t* when the close of the underlying session on or before *d* is at or before 15:30 IST on *t*; the latest such *d* wins. Comparison is `<=`, so domestic ETFs count their own-date NAV as known.
+- Consequences: normal US day → NAV dated *t−1*; Monday → Friday's NAV (lag 3); US holiday (7 Sep 2026) → the carried-forward NAV dated 7 Sep, with underlying date 4 Sep; HK → same day.
+- `nav_publication_lag_days` = calendar days from `nav_known_date` to *t*. It is not the observed AMFI posting delay (that would need fetch times; not built).
+- `strike_lag_sessions` is a hook to test a different rule before Jul 2023; unused by default.
+- OPEN (unchanged): HK timing, pre-Jul-2023 timing, FX rate/time used by each AMC.
+
+### D19. Band calculator and flags (`features/bands.py`)
+- Arithmetic in `Decimal` from `str(float)` to avoid float traps at the rounding boundary. Rounding and tick come from `config/rules.yaml` (low up, high down to ₹0.01 — still PRELIMINARY).
+- "Touched" = within one tick of the limit (R10 `hit_up`, `hit_up_max` and lower twins). `ltp_at_*` = last trade within 0.1% of the limit in force at end of day. `widened_up` = `high > initial upper limit`. Gold/silver have no maximum (`high_max = inf`).
+- `infer_regime_from_band` gives R10's `regime_inferred` (name, `ambiguous`, `other`, `unknown`).
+- Two helpers produce the official band (`clean/band_official.py` and `bands.attach_official_band`); `etf_day` uses the clean table (`band_session_date`).
+
+### D20. Premium and return definitions
+- `x_april` follows SPEC (uses FV); BLUEPRINT defines it on `nav_known`, so `x_april_nav_known` is also stored. **Amish to pick one.**
+- `ret_own_k` = log return over the k sessions ending at *t−1* (known before *t*); `ret_close_k` is the contemporaneous one.
+- `fv_method` names the data tier (`bloomberg`, `free_futures`, `nav_only`, `no_nav`). Any missing required input → `nav_only`, never a partial adjustment. Zero/negative inputs raise.
+- `avg_trade_value` is in rupees (bhavcopy turnover is in lakhs; converted).
+
+### D21. Bloomberg importer (`collect/bloomberg.py`, template `docs/bloomberg_template.md`)
+- Long format (date, instrument, field, value, time/zone). Strict column and coverage validation; conflicting values across files raise unless `on_conflict="latest"`.
+- US-close coverage requires a stamp at or after 13:00 New York so a 15:30 IST row (06:00 New York) is not mistaken for the close.
+- Weakness: coverage of the FX rate at NAV time is presence-only until each AMC's FX time is verified.
+- Empty folder → empty result (no Bloomberg exports yet, D13).
+
+### D22. Collector live checks (13 Nov 2026)
+- **MON100 split (D9) — CONFIRMED from raw data.** Price ex-date 17 Jun 2021 (close 1015.62 on 16 Jun; open 107.00, close 100.87 on 17 Jun; `PREV_CLOSE` on 17 Jun unadjusted). AMFI NAV stays on the old scale through 18 Jun (1025.4998) and is on the new scale on 21 Jun (101.5224). `config/corporate_actions.yaml` therefore has separate `ex_date` (price, units) and `nav_ex_date`; set `verified: true` from the raw files (NSE circular itself not read). On 17–18 Jun 2021 the raw premium is meaningless without these factors.
+- **AMFI on US holidays.** Motilal carries a NAV row forward on 7 Sep 2026 (US Labor Day); Mirae (MASPTOP50, 149169) has **no row** that day. D10's "carried forward" holds for Motilal only. Alignment code must not assume one NAV per fund per Indian session.
+- **AMFI history window (D9).** 5 days ≈ 2.5 MB in 5 s; 12 days ≈ 9.3 MB within 100 s; 30 days timed out three times. Backfill uses 7-day windows on a fixed calendar grid. Max window and `mf=`/`tp=` filters still OPEN.
+- **UDiFF earliest date (D2) — RESOLVED: 2024-01-01** (404 on 2023-12-29). Files of 1–2 Jan 2024 have a trailing comma in the header and `Rsvd01..04` names; parser now drops trailing empty header fields.
+- **Security master earliest date (D4) — RESOLVED: 2024-02-05** (404 on 2 Jan, 1 Feb, 2 Feb 2024). `IssdCptl` units start Feb 2024; earlier units need R11's monthly AUM/NAV.
+- **Band oddity.** NIFTYBEES band on 2024-03-01 was 231.05–255.38 (ratio ≈ 1.105), not the ±20% rule. Not investigated; relevant to R7/R10 `regime_inferred`.
+- **Yahoo intraday (free futures, D13).** One live request returned HTTP 429; not retried. Fixtures are synthetic. Yahoo keeps ~60 days of 5-minute bars, so unrecorded days are lost; if 429 persists the interim fair value has no inputs (`nav_only`). OPEN: decide another free source or keep retrying.
+- **NSE politeness.** Backfill keeps NSE requests ≥ 1.5 s apart; a 403/429 stops that website for the run; five failures in a row stop it; 404s are recorded in `data/state/backfill_state.json` and not re-asked.
+- Backfill started 13 Nov 2026: UDiFF + security master from 2024-01-01, full bhavcopy + AMFI history from 2021-01-01.
+
 ---
 
 ## Open VERIFY items (running list)

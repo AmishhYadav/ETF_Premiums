@@ -1,0 +1,78 @@
+"""Shared helpers for the clean-layer tests (no tests in this file).
+
+``make_raw_root`` copies the saved sample files in tests/fixtures into a
+temporary raw store, in the same data/raw/<source>/<date>/ layout the
+collectors produce (through RawStore, so the manifest and file permissions are
+real too). Dates are the ones the files describe.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+from etfp.rawstore import RawStore
+from etfp.store import Store
+
+FIXTURES = Path(__file__).parent / "fixtures"
+FETCHED = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+
+# (source folder, folder date, raw file name, fixture path under tests/fixtures)
+RAW_FILES: list[tuple[str, date, str, str]] = [
+    ("nse_bhavcopy_full", date(2021, 1, 4), "sec_bhavdata_full_04012021.csv",
+     "nse_bhavcopy/sec_bhavdata_full_04012021.csv"),
+    ("nse_bhavcopy_full", date(2026, 11, 9), "sec_bhavdata_full_09112026.csv",
+     "nse_bhavcopy/sec_bhavdata_full_09112026.csv"),
+    ("nse_udiff_bhavcopy", date(2026, 11, 9), "BhavCopy_NSE_CM_0_0_0_20261109_F_0000.csv.zip",
+     "nse_udiff/BhavCopy_NSE_CM_0_0_0_20261109_F_0000.csv.zip"),
+    ("nse_security_master", date(2024, 7, 1), "NSE_CM_security_01072024.csv.gz",
+     "nse_secmaster/NSE_CM_security_01072024.csv.gz"),
+    ("nse_security_master", date(2025, 1, 2), "NSE_CM_security_02012025.csv.gz",
+     "nse_secmaster/NSE_CM_security_02012025.csv.gz"),
+    ("nse_security_master", date(2026, 9, 4), "NSE_CM_security_04092026.csv.gz",
+     "nse_secmaster/NSE_CM_security_04092026.csv.gz"),
+    ("nse_security_master", date(2026, 11, 9), "NSE_CM_security_09112026.csv.gz",
+     "nse_secmaster/NSE_CM_security_09112026.csv.gz"),
+    ("nse_etf_seclist", date(2026, 11, 10), "eq_etfseclist.csv",
+     "nse_etf_listfile/eq_etfseclist.csv"),
+    ("amfi_navall", date(2026, 11, 10), "NAVAll.txt", "amfi/NAVAll.txt"),
+    ("amfi_nav_history", date(2026, 9, 10), "navhistory_20260901_20260910.txt",
+     "amfi/navhistory_20260901_20260910.txt"),
+    ("amfi_nav_history", date(2021, 1, 8), "navhistory_20210101_20210108.txt",
+     "amfi/navhistory_20210101_20210108.txt"),
+    ("nse_etf_api", date(2026, 11, 10), "etf_212000.json", "nse_etf_api/api_etf.json"),
+    ("amc_inav_motilal", date(2026, 11, 10), "inav_155000.json",
+     "amc_inav/motilal_GetINAVandPrice.json"),
+    ("amc_inav_mirae", date(2026, 11, 10), "inav_155000.json", "amc_inav/mirae_ticker.json"),
+    ("amc_inav_nippon", date(2026, 11, 10), "inav_155000.json",
+     "amc_inav/nippon_DetailsFill.json"),
+]  # fmt: skip
+
+
+def save_raw(root: Path, source: str, day: date, name: str, content: bytes) -> None:
+    """Store bytes in <root>/data/raw exactly as a collector would."""
+    RawStore(root / "data" / "raw").save(
+        source=source, day=day, name=name, content=content,
+        url="https://example.invalid/fixture", status_code=200, fetched_at=FETCHED,
+    )  # fmt: skip
+
+
+def fixture_bytes(rel: str) -> bytes:
+    return (FIXTURES / rel).read_bytes()
+
+
+def make_raw_root(root: Path, *, skip_sources: tuple[str, ...] = ()) -> Path:
+    """Fill <root>/data/raw with the sample files. Returns ``root``."""
+    for source, day, name, rel in RAW_FILES:
+        if source not in skip_sources:
+            save_raw(root, source, day, name, fixture_bytes(rel))
+    return root
+
+
+def build_sample(factory) -> tuple[Path, Store]:
+    """Make a sample raw root, run build_clean on it and return (root, store)."""
+    from etfp.clean import build_clean
+
+    root = make_raw_root(factory.mktemp("proj"))
+    build_clean(root)
+    return root, Store(root / "data" / "clean")

@@ -1,0 +1,11 @@
+date,time,timezone,instrument,field,value,note
+2026-09-04,16:00,America/New_York,NQ1,PX_LAST,20000.00,synthetic US close of a
+2026-09-04,15:30,Asia/Kolkata,NQ1,PX_LAST,19950.00,synthetic
+2026-09-07,15:30,Asia/Kolkata,NQ1,PX_LAST,20100.00,synthetic Labor Day Monday
+2026-09-08,15:30,Asia/Kolkata,NQ1,PX_LAST,20200.00,synthetic
+2026-09-08,16:00,America/New_York,NQ1,PX_LAST,20250.00,synthetic
+2026-09-04,15:30,Asia/Kolkata,USDINR,PX_LAST,84.00,synthetic
+2026-09-07,15:30,Asia/Kolkata,USDINR,PX_LAST,84.21,synthetic
+2026-09-08,15:30,Asia/Kolkata,USDINR,PX_LAST,84.42,synthetic
+2026-09-04,16:00,America/New_York,USDINR,PX_LAST,83.95,synthetic NAV-time rate
+2026-09-08,16:00,America/New_York,USDINR,PX_LAST,84.40,synthetic NAV-time rate

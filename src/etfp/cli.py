@@ -1,7 +1,7 @@
 """Command-line entry points. Sub-commands are added milestone by milestone.
 
-Each command is a thin wrapper: the real work lives in ``etfp.recorder`` and
-``etfp.ops`` so it can be tested without a terminal.
+Each command is a thin wrapper: the real work lives in ``etfp.recorder``,
+``etfp.ops`` and ``etfp.collect.jobs`` so it can be tested without a terminal.
 """
 
 from __future__ import annotations
@@ -9,11 +9,14 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import sys
-from datetime import datetime
+from datetime import date, datetime
+from typing import Annotated
 
 import typer
 
 from etfp import __version__, calendars, ops, paths, recorder
+from etfp.collect import jobs
+from etfp.collect.backfill_state import STATE_FILE_NAME, BackfillState
 from etfp.config import CollectSettings, load_collect_settings
 from etfp.http import PoliteClient
 from etfp.rawstore import RawStore
@@ -81,6 +84,61 @@ def _build_client(settings: CollectSettings) -> PoliteClient:
     )
 
 
+# AMFI builds history files on request; a 7-day window (~6 MB) can take well over the
+# 30 s default, so the daily/backfill client waits longer before giving up on a read.
+_BULK_TIMEOUT_S = 120.0
+
+
+def _build_bulk_client(settings: CollectSettings) -> PoliteClient:
+    return PoliteClient(
+        min_interval_s={"nseindia.com": settings.http.nse_min_interval_s},
+        default_interval_s=settings.http.default_interval_s,
+        max_retries=settings.http.max_retries,
+        timeout_s=_BULK_TIMEOUT_S,
+    )
+
+
+def _parse_day(text: str, option: str) -> date:
+    """Strict YYYY-MM-DD; anything else is a usage error that names the option."""
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        typer.echo(f"error: {option} must be a date like 2026-11-09, got {text!r}", err=True)
+        raise typer.Exit(EXIT_USAGE) from None
+
+
+def _source_names(values: list[str] | None, allowed: tuple[str, ...]) -> list[str]:
+    try:
+        return jobs.parse_sources(values, allowed=allowed)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from None
+
+
+def _print_outcome(outcome: jobs.Outcome, *, quiet_skips: bool) -> None:
+    """One line per download. Failures go to stderr so cron mails them."""
+    unit = outcome.unit
+    where = f"{unit.source} {unit.day.isoformat()}"
+    if outcome.status == "fetched":
+        typer.echo(f"OK          {where}: {outcome.detail}")
+    elif outcome.status == "failed":
+        typer.echo(f"FAILED      {where}: {outcome.detail}", err=True)
+    elif outcome.status == "unavailable":
+        if not quiet_skips or outcome.detail.startswith("HTTP 404"):
+            typer.echo(f"UNAVAILABLE {where} {unit.name}: {outcome.detail}")
+    elif not quiet_skips:
+        typer.echo(f"EXISTS      {where} {unit.name}")
+
+
+def _print_summary(outcomes: list[jobs.Outcome]) -> int:
+    counts = jobs.summarize(outcomes)
+    typer.echo(
+        f"summary: {counts['fetched']} fetched, {counts['exists']} already stored, "
+        f"{counts['unavailable']} not available, {counts['failed']} FAILED"
+    )
+    return counts["failed"]
+
+
 @app.command()
 def version() -> None:
     """Print the package version."""
@@ -135,6 +193,152 @@ def _inav_loop(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(EXIT_LOCKED) from None
     typer.echo(f"recorder finished: {len(results)} ticks run")
+
+
+@collect_app.command("daily")
+def collect_daily(
+    day_text: Annotated[
+        str | None,
+        typer.Option(
+            "--date", help="Trading day to collect, YYYY-MM-DD (default: today in India)."
+        ),
+    ] = None,
+    sources: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--sources",
+            help="Only these sources (repeat or comma-separate). Default: all. "
+            f"Choices: {', '.join(jobs.DAILY_SOURCES)}.",
+        ),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Download again even if the raw file is already stored.")
+    ] = False,
+) -> None:
+    """Download every daily source for one NSE trading day (idempotent; safe to re-run).
+
+    Skips days NSE was closed. Files already in data/raw are not fetched again. A source
+    that fails is reported (source, date, reason) and the others still run; the exit code
+    is 1 if anything failed.
+    """
+    chosen = _source_names(sources, jobs.DAILY_SOURCES)
+    now = now_ist()
+    today = now.date()
+    day = _parse_day(day_text, "--date") if day_text else today
+    if day > today:
+        typer.echo(f"error: --date {day.isoformat()} is in the future (today is {today})", err=True)
+        raise typer.Exit(EXIT_USAGE)
+    try:
+        open_today = calendars.is_nse_session(day)
+    except ValueError as exc:  # before the sample start or beyond the calendar
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from None
+    if not open_today:
+        typer.echo(
+            f"NSE was closed on {day.isoformat()} ({day.strftime('%A')}); "
+            "nothing to collect for that day."
+        )
+        return
+    _configure_logging()
+    plan = jobs.plan_daily(day, chosen, now=now)
+    for note in plan.notes:
+        typer.echo(f"NOTE        {note}")
+    settings = load_collect_settings()
+    store = RawStore(paths.raw_dir())
+    with _build_bulk_client(settings) as client:
+        outcomes = jobs.run_units(
+            plan.units,
+            client,
+            store,
+            force=force,
+            on_outcome=lambda o: _print_outcome(o, quiet_skips=False),
+        )
+    if _print_summary(outcomes):
+        raise typer.Exit(1)
+
+
+@app.command("backfill")
+def backfill(
+    from_text: Annotated[str, typer.Option("--from", help="First day to collect, YYYY-MM-DD.")],
+    to_text: Annotated[
+        str | None,
+        typer.Option("--to", help="Last day to collect, YYYY-MM-DD (default: today in India)."),
+    ] = None,
+    sources: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--sources",
+            help="Only these sources (repeat or comma-separate). Default: all that can be "
+            f"backfilled. Choices: {', '.join(jobs.BACKFILL_SOURCES)}.",
+        ),
+    ] = None,
+    retry_unavailable: Annotated[
+        bool,
+        typer.Option(
+            "--retry-unavailable",
+            help=f"Ask again for files recorded as not available (data/state/{STATE_FILE_NAME}).",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Only count what would be downloaded; request nothing."),
+    ] = False,
+) -> None:
+    """Download history for a date range. Resumable: stored files and known 404s are skipped.
+
+    Polite by design: NSE requests are at least 1.5 s apart, AMFI history is requested in
+    7-day windows, and a block (HTTP 403/429) stops all requests to that website.
+    """
+    chosen = _source_names(sources, jobs.BACKFILL_SOURCES)
+    now = now_ist()
+    start = _parse_day(from_text, "--from")
+    end = _parse_day(to_text, "--to") if to_text else now.date()
+    try:
+        plan = jobs.plan_backfill(start, end, chosen, now=now)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from None
+    for note in plan.notes:
+        typer.echo(f"NOTE        {note}")
+    store = RawStore(paths.raw_dir())
+    state = BackfillState.load(paths.state_dir() / STATE_FILE_NAME)
+    if dry_run:
+        _print_dry_run(plan, store, state, retry_unavailable)
+        return
+    _configure_logging()
+    settings = load_collect_settings()
+    with _build_bulk_client(settings) as client:
+        outcomes = jobs.run_units(
+            plan.units,
+            client,
+            store,
+            state=state,
+            retry_unavailable=retry_unavailable,
+            on_outcome=lambda o: _print_outcome(o, quiet_skips=True),
+        )
+    if _print_summary(outcomes):
+        raise typer.Exit(1)
+
+
+def _print_dry_run(
+    plan: jobs.Plan, store: RawStore, state: BackfillState, retry_unavailable: bool
+) -> None:
+    todo: dict[str, int] = {}
+    stored = known = 0
+    for unit in plan.units:
+        if store.exists(unit.source, unit.day, unit.name):
+            stored += 1
+        elif not retry_unavailable and state.is_unavailable(unit.source, unit.day, unit.name):
+            known += 1
+        else:
+            todo[unit.source] = todo.get(unit.source, 0) + 1
+    for source, count in sorted(todo.items()):
+        typer.echo(f"would download {count:5d} x {source}")
+    nse = sum(n for s, n in todo.items() if s.startswith("nse_"))
+    typer.echo(
+        f"dry run: {sum(todo.values())} to download, {stored} already stored, "
+        f"{known} known not available; NSE requests alone take about {nse * 1.5 / 60:.0f} min"
+    )
 
 
 @app.command()
