@@ -179,6 +179,14 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 - **NSE politeness.** Backfill keeps NSE requests ≥ 1.5 s apart; a 403/429 stops that website for the run; five failures in a row stop it; 404s are recorded in `data/state/backfill_state.json` and not re-asked.
 - Backfill started 13 Nov 2026: UDiFF + security master from 2024-01-01, full bhavcopy + AMFI history from 2021-01-01.
 
+### D23. Manual data loaders (`clean/manual_*.py`, formats in `docs/manual_data.md`)
+- Strict CSV headers (missing or unknown columns are errors); every error names `data/manual/<file> line N`. `source_file` = `data/manual/<file>.csv:<line>`. Money columns are rupees. A missing CSV gives an empty table; a malformed one stops `etfp build`.
+- **Events (R5, R16).** `date` = day the event became public; a `ts_ist` on another IST date is an error. First tradable session: before 15:30 IST on a session day → that day; at/after 15:30, weekend or holiday → next session; time unknown → same day if a session (optimistic). `direction` may be blank ("not yet classified") — it is a research judgement made before looking at prices, so the pipeline never fills it. `verified = true` requires `source_primary`. Blank `event_id` → `<date>_<category>_<sha1[:8]>` (changes if the description is edited; give explicit ids). Symbols `;`-separated. Seeded with 6 rows from repo docs, all unverified, no URLs, no direction.
+- **Feeders (R4, R14).** One row per (scheme code, month end); a scheme cannot switch ETF. `feeder_units_daily` carries forward each feeder's latest holding and sums per ETF; NaN until a feeder reports. Use `lag_days=10` (portfolios publish up to ~10 days after month end) to avoid look-ahead.
+- **units_monthly (R11).** `units = aum / nav` if blank; if all three typed they must agree within 1% (catches crores typed as rupees).
+- **Trends (R15).** Windows chained in start-date order by the ratio of sums on shared days; earlier days keep their value; series rescaled to max 100; `<1` stored as 0.5. No overlap, zero overlap or weekly format stops the build.
+- **Config.** Creation units MONQ50 600,000 and MON100 250,000 (scheme documents); MASPTOP50, MAFANG null and in `verify`. Every D7 unit change for MONQ50, MON100, MAHKTECH, HNGSNGBEES is a whole multiple of the size. `nav_t2.start` marked `verify`. Equity bands: `breadth_test: false`, `widen_moving_side_only: true` (final SEBI circular para 5.1).
+
 ---
 
 ## Open VERIFY items (running list)
@@ -186,14 +194,17 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 | Item | Where it matters | Status |
 |---|---|---|
 | iNAV response shape; is depth exposed | M2 | OPEN |
-| AMFI history filter parameters and window limit | M1 backfill | OPEN |
-| Earliest UDiFF and security-master dates | M1 backfill | OPEN |
+| AMFI history filter parameters and window limit | M1 backfill | PARTLY (D22): 7-day windows work; max and filters OPEN |
+| Earliest UDiFF and security-master dates | M1 backfill | RESOLVED (D22): UDiFF 2024-01-01, security master 2024-02-05 |
 | Band rounding rule on more days | M3 bands | PRELIMINARY |
 | `IssdCptl` update lag vs AMC figures | M5 valve status | OPEN |
 | NAV timing for HK ETFs and before Jul 2023 | M3 fair value | OPEN |
 | FX rate and time used in each AMC's NAV | M3 fair value | OPEN |
-| Free futures/FX source reliability | M2/M3 | OPEN |
+| Free futures/FX source reliability | M2/M3 | OPEN — Yahoo returned 429 on first try (D22) |
 | NSE circular 122/2026 full text | `config/rules.yaml` | OPEN (secondary summaries only) |
 | 2027 NSE holiday list | calendars | OPEN (not yet published) |
 | Bloomberg tickers per ETF | `config/etfs.yaml` | OPEN |
 | Futures proxies for S&P 500 Top 50 and FANG+ | M3 fair value | OPEN (ES used as proxy per SPEC §6.2) |
+| NSE quote JSON shape (depth, total buy/sell) | iNAV snapshots | OPEN — reader written against assumed shape (D17) |
+| AMFI NAV rows on US holidays per AMC | NAV alignment | OPEN — Mirae has none, Motilal carries forward (D22) |
+| NIFTYBEES band ratio 1.105 on 2024-03-01 | R7/R10 | OPEN (D22) |

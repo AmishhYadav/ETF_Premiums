@@ -39,25 +39,25 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R4 — Feeder-fund (fund of funds) table
 - Asked: 2026-11-10
 - Need: New table `fof_monthly`: fund of funds name, AMFI scheme code, month end, AUM, units of the underlying ETF held (from the AMC monthly portfolio), and subscription status (open / lump sum shut / SIP shut) with notice date. Feeder funds value the ETF at the exchange price and buy on the exchange, so their flows are price-insensitive demand.
-- Status: open
+- Status: partly done (e898930, 2026-11-14): `fof_monthly` loader, validation, template, docs/manual_data.md. Data and AMFI confirmation of the feeder list still to enter
 - Notes: Manual CSV under data/manual/ is fine for v1. Feeders: Motilal Oswal Nasdaq 100 FoF; Mirae Asset NYSE FANG+ ETF FoF, S&P 500 Top 50 ETF FoF, Hang Seng TECH ETF FoF. Confirm the list from AMFI.
 
 ### R5 — Seed the events table
 - Asked: 2026-11-10
 - Need: Seed `events` with the dated events in the research dossier (overseas-cap history 2020-2026, price-band steps Feb-Sep 2026, BSE and NSE cautions, AMC notices), each with a source URL and `verified = false` until the primary document is saved under data/raw/rules/.
-- Status: open
+- Status: partly done (e898930, 2026-11-14): loader + `verified` flag; 6 seed rows from repo docs. Waiting for the research-side CSV at data/manual/events.csv
 - Notes: The research side will supply the CSV; the pipeline needs the loader and the verified flag.
 
 ### R6 — Creation-unit sizes
 - Asked: 2026-11-10
 - Need: Set `creation_unit_size` in config/etfs.yaml: MONQ50 600000, MON100 250000 (scheme documents). Confirm MASPTOP50 and MAFANG from the latest Mirae factsheets; keep them in `verify` until then.
-- Status: open
+- Status: partly done (e898930, 2026-11-14): MONQ50 600000 and MON100 250000 set; MASPTOP50 and MAFANG null and listed in `verify` until Mirae factsheets are checked
 - Notes: Units changes in DECISIONS D7 are exact multiples of these sizes, which supports both the sizes and the reading of `IssdCptl`.
 
 ### R7 — Band rules: history and widening test
 - Asked: 2026-11-10
 - Need: Find the exchange circular that introduced the T-2 NAV base and record the regime before it in config/rules.yaml (the sample starts in Jan 2021 and the T-2 rule may date from about 2022). Add the breadth test for widening if the final SEBI circular kept it: at least 50 trades from 10 client codes and 3 trading members on each side at or beyond 9.90%.
-- Status: open
+- Status: partly done (e898930, 2026-11-14): `nav_t2` start marked VERIFY; final-circular widening rules recorded (no breadth test, moving side only). Circular introducing T-2 still to find; `regime_inferred` (R10) will date it from data
 - Notes: Mark the `nav_t2` start date as VERIFY until found. Update 2026-11-12: the final circular (HO/47/11/11(1)2026-MRD-POD3/I/13804/2026, 15 Jun 2026, para 5.1) did not keep the breadth test. Widening needs only trades at 9.90% from the base and a cooling-off of 15 minutes (5 in the last half hour); the band then widens by 5% of the base, at most twice per direction, on the moving side only. NSE's implementing circular is NSE/CMTR/76101 (ref 122/2026), 1 Sep 2026.
 
 ### R8 — Securities lending data
@@ -81,7 +81,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R11 — Units outstanding before the first security-master file
 - Asked: 2026-11-11
 - Need: Monthly `units` = AUM / NAV for each tracked ETF from Jan 2021 to the first available security-master date, from AMFI and fund-house monthly disclosures, in `units_monthly` with a `source` column. DECISIONS D4 found HTTP 404 for the file of 2 Jan 2024, so `IssdCptl` cannot date the Jan 2022 suspension or the Jun 2022 reopening.
-- Status: open
+- Status: partly done (e898930, 2026-11-14): `units_monthly` loader + template. Security master starts 2024-02-05 (D22), so monthly data needed Jan 2021 to Feb 2024 — to enter by hand
 - Notes: Needed for paper A. Manual CSV under data/manual/ is fine. Check whether MONQ50's 3,275,018 units (1 Jul 2024) equal its units at launch (Dec 2021).
 
 ### R12 — Beta-adjusted fair value
@@ -105,13 +105,13 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R15 — Google Trends daily series
 - Asked: 2026-11-11
 - Need: Daily search interest for India for a fixed term list ("MONQ50", "Nasdaq Q50 ETF", "MON100", "Motilal Oswal Nasdaq 100 ETF", "MAFANG", "Mirae FANG ETF", "international ETF premium"), pulled in fixed 90-day windows that overlap by 30 days, from 2024-01-01, raw responses saved under data/raw/trends/<pull date>/. Chain the windows on the overlaps into one series per term.
-- Status: open
+- Status: partly done (e898930, 2026-11-14): `trends_daily` loader and window chaining. Raw CSVs still to pull by hand into data/raw/trends/<pull date>/
 - Notes: Trends rescales each window to 0-100, so a series pulled later will not match one pulled now. Rate-limit; manual CSV download from the Trends site is acceptable for v1.
 
 ### R16 — Event timestamps
 - Asked: 2026-11-11
 - Need: Add to `events` (R5): `ts_ist` (publication time, IST, null if unknown), `first_tradable_session` (the first NSE session that could react), `category` (rule / cap / caution / amc_notice / fund_status / media), `direction` (premium_reducing / premium_preserving / neutral, set before prices are looked at) and `source_primary` (URL or raw-file path of the original document).
-- Status: open
+- Status: done (e898930, 2026-11-14): `ts_ist`, `first_tradable_session` (computed if blank), `category`, `direction` (left blank until classified), `source_primary`. See DECISIONS D23
 - Notes: BSE's caution of 2026-09-25 was reported after the close, so its first tradable session is 2026-09-28. The April 2027 registration classifies events by `direction`.
 
 ### R17 — China comparison (Bloomberg)

@@ -322,7 +322,7 @@ _SCHEMAS: tuple[TableSchema, ...] = (
             Column("type", "string", "rule, limit, suspension, warning or other"),
             Column("category", "string", "rule, cap, caution, amc_notice, fund_status or media"),
             Column("direction", "string", "premium_reducing, premium_preserving or neutral"),
-            Column("symbols", "string", "Comma-separated affected symbols; empty = all"),
+            Column("symbols", "string", "Semicolon-separated affected symbols; empty = all"),
             Column("first_tradable_session", "date", "First NSE session that could react"),
             Column("description", "string", "What happened"),
             Column("url", "string", "Link to the source"),
