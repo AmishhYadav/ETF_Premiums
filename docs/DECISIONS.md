@@ -240,6 +240,15 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 - **China QDII ETFs (R17).** `china_etf_daily` from Bloomberg instruments `<code> CH` (Asia/Shanghai). Licensed: research export only, never the open dataset. OPEN: `EQY_SH_OUT` unit; NAV date vs US close for the premium.
 - **Stale known NAV.** The first real 1.3.0 build showed MONQ50's `nav_known_at_close` on 12 Nov 2026 = 68.8755, a NAV from Nov 2024 (AMFI backfill not yet at 2026), giving a fake 236% premium. Rule: a known NAV more than 7 calendar days old is blanked (date and lag kept, `dq_nav_stale` set); premiums, `fv`, `x_april` become empty, `fv_method = no_nav`. MEANING CHANGE in 1.3.0.
 
+
+### D32. First full-history build (14 Nov 2026): source defects found and handled
+- **M3 spot-check passes.** MONQ50 `prem_raw`: 4 Sep 2026 19.53% (Value Research 19.5%), 7 Oct 2026 110.07% (press ~110%), 9 Nov 2026 100.8% raw / 107.1% known (paper R19). From 7 Sep 2026 all 564 computed bands equal NSE's official band to the tick.
+- **More missing NSE sessions.** Special Saturday sessions 2024-01-20 (full session; 22 Jan declared a holiday), 2024-03-02 and 2024-05-18 (disaster-recovery test sessions with narrow bands) have NSE bhavcopies (HTTP 200) and were missing from the calendar; added to `extra_sessions`. The narrow special-session bands are not modelled in rules.yaml, so those days show `band_mismatch`.
+- **NSE archive defect.** `sec_bhavdata_full_04112021.csv` (2021 Muhurat) is a byte copy of the 3 Nov 2021 file; the session happened (8 Nov 2021 `PREV_CLOSE` MON100 120.09 ≠ 117.54). Listed in new `config/raw_exceptions.yaml` and skipped with a warning; raw untouched.
+- **AMFI defect.** Three history windows (21–27 Jun, 28 Jun–4 Jul, 12–18 Jul 2026) came back as AMFI's HTML page with HTTP 200 and were stored. The collector now rejects HTML as `SourceUnavailableError` (not stored, retried); the three windows were re-downloaded as `.v2` (cleaner uses the highest version).
+- **BSE defects.** Legacy files have rows with no ISIN (14 Jan 2022) and rows glued together (7 Feb, 15 Jul, 22 Jul 2022). No-ISIN rows are skipped; malformed legacy lines are set aside with a warning, and the build stops if a set-aside line mentions one of our funds' ISINs.
+- **Pre-Sep-2026 band mismatches: 414 of 7,668 rows.** 237 differ by ≤ ₹0.05 (likely NAV revisions or provisional NAVs used by the exchange); the larger ones cluster on special sessions (2 Mar, 18 May 2024), the sessions after them (no Saturday NAV), 5 Nov 2024 (Muhurat NAV gap, D24) and a few others. Kept as `band_mismatch`; the official band is authoritative. OPEN for the research side.
+
 ---
 
 ## Open VERIFY items (running list)
@@ -267,3 +276,5 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 | Yahoo intraday access | free fair value | OPEN — 429 on 13 and 14 Nov (D22, D29) |
 | NSE quote JSON shape + capture blocked for headless Chromium | iNAV depth (CLAUDE.md) | OPEN (D31) |
 | China `EQY_SH_OUT` unit; NAV date vs US close | R17 | OPEN (D31) |
+| Pre-Sep-2026 band mismatches (414 rows; 237 within ₹0.05) | R2/R10 | OPEN (D32) |
+| Special-session band widths (2 Mar, 18 May 2024) | rules.yaml | OPEN (D32) |

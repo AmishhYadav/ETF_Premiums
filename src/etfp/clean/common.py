@@ -199,3 +199,25 @@ class CleanContext:
         if self.master is not None:
             symbols |= set(self.master["symbol"].dropna().astype(str))
         return symbols
+
+
+def skipped_raw_files(config_path: Path | None = None) -> dict[str, str]:
+    """Raw files proved wrong and listed in config/raw_exceptions.yaml: {relpath: reason}.
+
+    The raw files themselves stay untouched; cleaners skip them with a warning.
+    A missing config file means "skip nothing".
+    """
+    import yaml
+
+    from etfp import paths
+
+    path = config_path or (paths.config_dir() / "raw_exceptions.yaml")
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    out: dict[str, str] = {}
+    for i, entry in enumerate(data.get("skip") or []):
+        if not isinstance(entry, dict) or not entry.get("path") or not entry.get("reason"):
+            raise CleanError(f"{path}: skip entry {i + 1} needs both 'path' and 'reason'")
+        out[str(entry["path"])] = " ".join(str(entry["reason"]).split())
+    return out

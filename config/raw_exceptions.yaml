@@ -1,0 +1,17 @@
+# Raw files the clean step must skip, with the reason. Read by
+# src/etfp/clean/common.py (skipped_raw_files).
+#
+# Raw files are never edited or deleted (CLAUDE.md). When a source publishes a
+# file that is wrong in a way we have proved, it is listed here instead: the
+# build skips it with a warning naming this entry, and the gap shows up in the
+# manifest like any other missing day. Each entry needs `path` (relative to
+# data/raw/) and `reason` (what is wrong and how we know).
+
+skip:
+  - path: nse_bhavcopy_full/2021-11-04/sec_bhavdata_full_04112021.csv
+    reason: >-
+      NSE's archive file for the 4 Nov 2021 Diwali Muhurat session is a
+      byte-for-byte copy of the 3 Nov 2021 file (DATE1 = 03-Nov-2021). The
+      session did happen: the 8 Nov 2021 file gives MON100 PREV_CLOSE 120.09,
+      not the 3 Nov close 117.54. True Muhurat prices for 2021 are not in this
+      archive (DECISIONS D32).

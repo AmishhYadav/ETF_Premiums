@@ -41,8 +41,9 @@ def test_labor_day_2026_india_open_us_closed():
 
 def test_nse_session_count_2021_to_2026_11_09():
     # Measured with exchange_calendars 4.13.2; guards against silent calendar drift.
-    # 1441 library sessions + 6 Diwali Muhurat sessions (2021-2026) from the overrides.
-    assert len(cal.sessions("IN", date(2021, 1, 1), date(2026, 11, 9))) == 1447
+    # 1441 library sessions + 6 Diwali Muhurat sessions (2021-2026) + 3 special Saturday
+    # sessions in 2024 (20 Jan, 2 Mar, 18 May) from the overrides.
+    assert len(cal.sessions("IN", date(2021, 1, 1), date(2026, 11, 9))) == 1450
 
 
 def test_library_upper_bound_is_read_from_library():
@@ -233,11 +234,14 @@ def test_real_overrides_file_loads_with_muhurat_sessions():
         date(2021, 11, 4),
         date(2022, 10, 24),
         date(2023, 11, 12),
+        date(2024, 1, 20),
+        date(2024, 3, 2),
+        date(2024, 5, 18),
         date(2024, 11, 1),
         date(2025, 10, 21),
         date(2026, 11, 8),
     ]
-    assert all("Muhurat" in s.reason for s in ov.extra_sessions)
+    assert all(("Muhurat" in s.reason) or ("Saturday" in s.reason) for s in ov.extra_sessions)
     assert 2027 not in ov.holidays  # must be filled from the NSE circular (VERIFY)
 
 

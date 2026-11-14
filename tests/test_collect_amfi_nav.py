@@ -354,3 +354,20 @@ def test_fetch_history_saves_under_end_date_and_rejects_reversed_range(tmp_path:
         with pytest.raises(ValueError, match="after end"):
             amfi.fetch_history(client, store, date(2026, 9, 11), date(2026, 9, 10))
     assert len(seen) == 1  # the reversed range never reached the network
+
+
+def test_fetch_history_web_page_is_not_stored_and_is_retryable(tmp_path: Path):
+    # AMFI answered three 2026 windows with its HTML "View/Download NAV History" page.
+    from etfp.http import SourceUnavailableError
+
+    page = b'\r\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Frameset//EN">\r\n<html>...</html>'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=page)
+
+    store = RawStore(tmp_path)
+    with make_client(handler) as client, pytest.raises(SourceUnavailableError, match="web page"):
+        amfi.fetch_history(client, store, date(2026, 6, 21), date(2026, 6, 27))
+    with make_client(handler) as client, pytest.raises(SourceUnavailableError):
+        amfi.fetch_navall(client, store, date(2026, 11, 13))
+    assert not any(p.is_file() for p in tmp_path.rglob("*") if p.suffix == ".txt")

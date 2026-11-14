@@ -33,7 +33,7 @@ from datetime import date
 
 import pandas as pd
 
-from etfp.http import PoliteClient
+from etfp.http import FetchResult, PoliteClient, SourceUnavailableError
 from etfp.rawstore import RawRecord, RawStore
 
 SOURCE_NAVALL = "amfi_navall"
@@ -103,9 +103,27 @@ def history_raw_name(start: date, end: date) -> str:
     return f"navhistory_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.txt"
 
 
+def _reject_web_page(result: FetchResult, source: str, day: date, url: str) -> None:
+    """AMFI sometimes answers HTTP 200 with its HTML "View/Download NAV History" page
+    instead of the text file (seen for three 2026 windows, DECISIONS D32). That is a
+    temporary server problem, not "no data": raise SourceUnavailableError so nothing
+    is stored and the next run tries again (backfill does not mark it unavailable)."""
+    head = result.content[:512].lstrip().lower()
+    if head.startswith((b"<!doctype html", b"<html", b"<head")):
+        raise SourceUnavailableError(
+            f"{source} for {day.isoformat()}: AMFI answered HTTP {result.status_code} with a "
+            f"web page instead of the NAV text file; not stored, try again later: {url}",
+            source=source,
+            day=day,
+            url=url,
+            status_code=result.status_code,
+        )
+
+
 def fetch_navall(client: PoliteClient, store: RawStore, day: date) -> RawRecord:
     """Download today's NAVAll.txt and store it under `day` (the day it was fetched)."""
     result = client.get(NAVALL_URL, source=SOURCE_NAVALL, day=day, headers=AMFI_HEADERS)
+    _reject_web_page(result, SOURCE_NAVALL, day, NAVALL_URL)
     return store.save_result(source=SOURCE_NAVALL, day=day, name=NAVALL_NAME, result=result)
 
 
@@ -113,9 +131,9 @@ def fetch_history(client: PoliteClient, store: RawStore, start: date, end: date)
     """Download the NAV history for start..end and store it under day = `end`."""
     if start > end:
         raise ValueError(f"{SOURCE_HISTORY}: start {start} is after end {end}")
-    result = client.get(
-        history_url(start, end), source=SOURCE_HISTORY, day=end, headers=AMFI_HEADERS
-    )
+    url = history_url(start, end)
+    result = client.get(url, source=SOURCE_HISTORY, day=end, headers=AMFI_HEADERS)
+    _reject_web_page(result, SOURCE_HISTORY, end, url)
     return store.save_result(
         source=SOURCE_HISTORY, day=end, name=history_raw_name(start, end), result=result
     )

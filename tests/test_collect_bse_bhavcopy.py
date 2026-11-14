@@ -211,11 +211,14 @@ def test_bad_number_and_bad_date_name_the_line_and_column():
         bse.parse(("\n".join(bad_date) + "\n").encode(), source_file="x")
 
 
-def test_row_with_missing_isin_is_rejected():
+def test_row_with_missing_isin_is_skipped_not_fatal():
+    # BSE's legacy file of 14 Jan 2022 has a stock row with no ISIN. We match funds by
+    # ISIN only, so the row is skipped (and counted in the log); the rest still parse.
     lines = raw(UDIFF_NAME).decode().splitlines()
-    no_isin = [lines[0], lines[1].replace("INE117A01022", "", 1)]
-    with pytest.raises(ValueError, match="ISIN is empty"):
-        bse.parse(("\n".join(no_isin) + "\n").encode(), source_file="x")
+    no_isin = [lines[0], lines[1].replace("INE117A01022", "", 1), *lines[2:]]
+    out = bse.parse(("\n".join(no_isin) + "\n").encode(), source_file="x")
+    assert "INE117A01022" not in set(out["isin"])
+    assert len(out) == len(lines) - 2
 
 
 def test_short_row_is_rejected():
@@ -280,3 +283,23 @@ def test_a_real_404_also_propagates(tmp_path):
     with pytest.raises(SourceNotFoundError):
         bse.fetch(make_client(lambda r: httpx.Response(404)), store, UDIFF_DAY)
     assert not store.root.exists()
+
+
+def test_glued_legacy_line_is_set_aside_not_fatal():
+    # BSE's legacy file of 7 Feb 2022 has two rows glued into one line.
+    header = (
+        "SC_CODE,SC_NAME,SC_GROUP,SC_TYPE,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,NO_TRADES,"
+        "NO_OF_SHRS,NET_TURNOV,TDCLOINDI,ISIN_CODE,TRADING_DATE,FILLER2,FILLER3"
+    )
+    good = "500010,HDFC,A ,Q,1,2,1,2,2,1,10,100,200.00,,INE001A01036,07-Feb-22,,"
+    glued = (
+        "531240,SHAMROCK IND,XT,Q,6.53,6.90,6.53,6.55,6.53,6.87,4,1060,6942.00,,INE540108,"
+        "TIAANC      ,X ,Q,8.00,8.20,7.82,7.93,8.15,8.06,125,23356,186161.00,,INE864T01011,"
+        "07-Feb-22,,"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("EQ_ISINCODE_070222.CSV", "\n".join([header, good, glued]) + "\n")
+    out = bse.parse(buf.getvalue(), source_file="x")
+    assert list(out["isin"]) == ["INE001A01036"]
+    assert [n for n, _ in out.attrs["malformed_lines"]] == [3]

@@ -34,6 +34,9 @@ extra_sessions:
   - {date: 2021-11-04, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
   - {date: 2022-10-24, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
   - {date: 2023-11-12, reason: "Diwali Muhurat session, Sunday (bhavcopy HTTP 200, D24)"}
+  - {date: 2024-01-20, reason: "Special Saturday full session (22 Jan 2024 declared a holiday); bhavcopy HTTP 200, D32"}
+  - {date: 2024-03-02, reason: "Special Saturday session (disaster-recovery test, narrow bands); bhavcopy + security master HTTP 200, D32"}
+  - {date: 2024-05-18, reason: "Special Saturday session (disaster-recovery test, narrow bands); bhavcopy + security master HTTP 200, D32"}
   - {date: 2024-11-01, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
   - {date: 2025-10-21, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
   - {date: 2026-11-08, reason: "Diwali Muhurat session, Sunday (UDiFF + security master HTTP 200, D24)"}

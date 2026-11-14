@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import math
 import re
 import zipfile
@@ -80,6 +81,8 @@ FORMAT_UDIFF = "udiff"
 FORMAT_LEGACY = "legacy"
 
 # UDiFF column -> our column
+logger = logging.getLogger(__name__)
+
 _UDIFF_TEXT = {"ISIN": "isin", "TckrSymb": "ticker", "FinInstrmNm": "name", "SctySrs": "series"}
 _UDIFF_FLOAT = {
     "OpnPric": "open",
@@ -292,18 +295,45 @@ def parse(content: bytes, *, source_file: str) -> pd.DataFrame:
     index = {name: header.index(name) for name in required}
 
     out: dict[str, list] = {name: [] for name in OUTPUT_COLUMNS}
+    isin_col = index["ISIN" if fmt == FORMAT_UDIFF else "ISIN_CODE"]
+    no_isin = 0
+    malformed: list[tuple[int, str]] = []
     for line, fields in rows:
         # A row may be longer than the header only by empty fields (a header with a trailing
         # comma loses its last empty name above). Anything else is a real mismatch.
         if len(fields) < len(header) or any(fields[len(header) :]):
+            if fmt == FORMAT_LEGACY:
+                # Seen 7 Feb 2022: two legacy rows glued into one line (a missing line
+                # break, one ISIN cut short). BSE's own file is corrupt there, so the
+                # row is kept aside, not guessed at. The cleaner fails loudly if a kept-
+                # aside line mentions one of OUR funds' ISINs (see clean/bse_prices.py).
+                malformed.append((line, ",".join(fields)))
+                continue
             raise _fail(line, f"expected {len(header)} fields but found {len(fields)}")
+        if not fields[isin_col].strip():
+            # Some legacy rows have no ISIN (seen 14 Jan 2022: an XT-group stock). We match
+            # funds by ISIN only, so such a row can never be one of ours: skip and count it.
+            no_isin += 1
+            continue
         if fmt == FORMAT_UDIFF:
             _read_udiff_row(out, fields, index, line)
         else:
             _read_legacy_row(out, fields, index, line)
         out["file_format"].append(fmt)
         out["source_file"].append(source_file)
-    return _frame(out)
+    if no_isin:
+        logger.info("%s: %s: skipped %d row(s) with no ISIN", SOURCE, source_file, no_isin)
+    frame = _frame(out)
+    if malformed:
+        logger.warning(
+            "%s: %s: %d malformed legacy line(s) set aside (first: line %d)",
+            SOURCE,
+            source_file,
+            len(malformed),
+            malformed[0][0],
+        )
+    frame.attrs["malformed_lines"] = malformed
+    return frame
 
 
 def _read_udiff_row(out: dict[str, list], f: list[str], index: dict[str, int], line: int) -> None:

@@ -31,6 +31,7 @@ from etfp.clean.common import (
     list_raw_files,
     log_gaps,
     parse_file,
+    skipped_raw_files,
 )
 from etfp.collect import nse_bhavcopy, nse_udiff
 
@@ -72,7 +73,16 @@ def _parse_udiff(rf: RawFile, content: bytes) -> pd.DataFrame:
 
 def _read(ctx: CleanContext, source: str, symbols: set[str], parser) -> pd.DataFrame:
     frames = []
+    skip = skipped_raw_files()
     for rf in list_raw_files(ctx.raw_root, source):
+        if rf.relpath in skip:
+            logger.warning(
+                "%s: skipping %s (config/raw_exceptions.yaml): %s",
+                TABLE,
+                rf.relpath,
+                skip[rf.relpath],
+            )
+            continue
         frame = parse_file(TABLE, rf, lambda b, rf=rf: parser(rf, b))
         _check_file_date(rf, frame)
         frames.append(frame[frame["symbol"].isin(symbols)])

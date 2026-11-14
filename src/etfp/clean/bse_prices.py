@@ -93,6 +93,16 @@ def build(ctx: CleanContext) -> pd.DataFrame:
         frame = parse_file(
             TABLE, rf, lambda b, rf=rf: bse_bhavcopy.parse(b, source_file=rf.relpath)
         )
+        bad = [
+            (line, text)
+            for line, text in frame.attrs.get("malformed_lines", [])
+            if any(isin in text for isin in wanted)
+        ]
+        if bad:
+            raise CleanError(
+                f"{TABLE}: raw file {rf.relpath} line {bad[0][0]} is malformed and mentions one "
+                f"of our funds' ISINs, so a figure of ours may be lost: {bad[0][1][:200]}"
+            )
         _check_file_date(rf, frame)
         days.add(rf.day)
         ours = frame[frame["isin"].isin(list(wanted))].copy()
