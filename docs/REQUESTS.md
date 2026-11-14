@@ -99,13 +99,13 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R14 — Feeder holdings and net float
 - Asked: 2026-11-11
 - Need: Extend R4's `fof_monthly` with `etf_units_held` (from the feeder's monthly portfolio), `fof_net_flow` (AMFI monthly) and the feeder's daily NAV. Add `feeder_units` (sum over feeders, carried forward daily) and `float_net` = (`units_outstanding` - `feeder_units`) x `nav_known_at_close` to the ETF-day table.
-- Status: partly done (pending commit, 2026-11-14): `feeder_units`, `float_net` in etf_day; feeder daily NAV in `feeder_nav_daily` (config/feeders.yaml, 8 schemes verified in AMFI). Monthly feeder holdings still to enter by hand in data/manual/fof_monthly.csv
+- Status: partly done (e160a80, 2026-11-14): `feeder_units`, `float_net` in etf_day; feeder daily NAV in `feeder_nav_daily` (config/feeders.yaml, 8 schemes verified in AMFI). Monthly feeder holdings still to enter by hand in data/manual/fof_monthly.csv
 - Notes: Research finding of 2026-11-11: Motilal Oswal Nasdaq 100 FoF stopped new SIPs on 2024-12-10 and paused existing SIPs from 2025-01-05, citing exhausted overseas limits (addendum dated 2024-12-24), which implies its inflows had been met by creations; Mirae's feeders take only SIPs registered before 2024-01-05. The Mirae FANG+ feeder (about Rs 3,085 crore at market price) may hold 43-50% of the ETF's units. Feeders are mainly a supply channel, not a demand channel; R4's rationale is corrected by this.
 
 ### R15 — Google Trends daily series
 - Asked: 2026-11-11
 - Need: Daily search interest for India for a fixed term list ("MONQ50", "Nasdaq Q50 ETF", "MON100", "Motilal Oswal Nasdaq 100 ETF", "MAFANG", "Mirae FANG ETF", "international ETF premium"), pulled in fixed 90-day windows that overlap by 30 days, from 2024-01-01, raw responses saved under data/raw/trends/<pull date>/. Chain the windows on the overlaps into one series per term.
-- Status: partly done (pending commit, 2026-11-14): loader, window chaining and `etf_day.attention` via config/trends_terms.yaml (schema 1.3.0). Raw Trends CSVs still to pull by hand; MASPTOP50 and MAHKTECH have no terms
+- Status: partly done (e160a80, 2026-11-14): loader, window chaining and `etf_day.attention` via config/trends_terms.yaml (schema 1.3.0). Raw Trends CSVs still to pull by hand; MASPTOP50 and MAHKTECH have no terms
 - Notes: Trends rescales each window to 0-100, so a series pulled later will not match one pulled now. Rate-limit; manual CSV download from the Trends site is acceptable for v1.
 
 ### R16 — Event timestamps
@@ -117,7 +117,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R17 — China comparison (Bloomberg)
 - Asked: 2026-11-11
 - Need: Daily price, NAV and shares outstanding from Jan 2024 for six China-listed quota (QDII) ETFs on the Nasdaq-100 and S&P 500, imported through the Bloomberg CSV importer into `china_etf_daily`. Candidate codes, to confirm on the terminal: 513100, 159941, 513300, 159509 (Nasdaq), 513500, 159612 (S&P 500).
-- Status: partly done (pending commit, 2026-11-14): importer + `china_etf_daily` (instruments `<code> CH`, docs/bloomberg_template.md). Waiting for the Bloomberg export; confirm codes and the `EQY_SH_OUT` unit on the terminal
+- Status: partly done (e160a80, 2026-11-14): importer + `china_etf_daily` (instruments `<code> CH`, docs/bloomberg_template.md). Waiting for the Bloomberg export; confirm codes and the `EQY_SH_OUT` unit on the terminal
 - Notes: Outside control for a global rush into US technology shares. Chinese ETFs have a 10% limit on the previous close and issuer trading halts. Never commit the raw export.
 
 ### R18 — Research export
