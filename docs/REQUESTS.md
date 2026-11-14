@@ -27,13 +27,13 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R2 — Official band beside the computed band
 - Asked: 2026-11-10
 - Need: Store `band_low_official` and `band_high_official` from `PricRg`, with the file date and the session they apply to, next to the computed band, plus a mismatch flag. The research treats days at the upper band as censored demand and needs the exact ceiling.
-- Status: done (298d62a, 2026-11-14): `band_low_official`, `band_high_official`, `band_file_date`, `band_session_date` (next NSE session, D17), `band_mismatch` (one tick). Note D24: Muhurat sessions are sessions, so the file dated 6 Nov 2026 applies to Sun 8 Nov
+- Status: done (298d62a, 2026-11-14); update (0df3f24): computed band columns follow the D38 rules and `band_base_kind` is the base actually used (schema 1.5.0). Columns: `band_low_official`, `band_high_official`, `band_file_date`, `band_session_date` (next NSE session, D17), `band_mismatch` (one tick). Note D24: Muhurat sessions are sessions, so the file dated 6 Nov 2026 applies to Sun 8 Nov
 - Notes: DECISIONS D4 says the file dated t gives the band for the next session; keep both dates explicit.
 
 ### R3 — NAV timing columns
 - Asked: 2026-11-10
 - Need: For each ETF-day keep `nav_same_date`, `nav_known_at_close` with `nav_known_date`, and `nav_publication_lag_days`. Compute `prem_raw` on the first, `prem_nav_known` on the second, and build fair value from the second (DECISIONS D10).
-- Status: done (298d62a, 2026-11-14): `nav_same_date`, `nav_known_at_close`, `nav_known_date`, `nav_known_underlying_date`, `nav_publication_lag_days`, `prem_raw`, `prem_nav_known`; fair value from the known NAV. SPEC 6.1-6.3 rewritten (D18)
+- Status: done (298d62a, 2026-11-14); fix (0df3f24, 2026-11-14): `nav_known_at_close` could use a NAV dated after t (31 March year-end NAVs; 43 rows) — now excluded, schema 1.5.0, D39. **Research side: re-run anything using prem_nav_known/fv/x_april near 31 March.** Columns: `nav_same_date`, `nav_known_at_close`, `nav_known_date`, `nav_known_underlying_date`, `nav_publication_lag_days`, `prem_raw`, `prem_nav_known`; fair value from the known NAV. SPEC 6.1-6.3 rewritten (D18)
 - Notes: SPEC 6.1 and 6.2 need rewriting to match D10; log it.
 
 ### R4 — Feeder-fund (fund of funds) table
@@ -45,19 +45,19 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R5 — Seed the events table
 - Asked: 2026-11-10
 - Need: Seed `events` with the dated events in the research dossier (overseas-cap history 2020-2026, price-band steps Feb-Sep 2026, BSE and NSE cautions, AMC notices), each with a source URL and `verified = false` until the primary document is saved under data/raw/rules/.
-- Status: partly done (e898930, 2026-11-14): loader + `verified` flag; 6 seed rows from repo docs. Waiting for the research-side CSV at data/manual/events.csv
+- Status: partly done (e898930, 2026-11-14): loader + `verified` flag; 6 seed rows from repo docs. Waiting for the research-side CSV at data/manual/events.csv. Update (0df3f24, 2026-11-14): 18 overseas-cap candidates in data/manual/events_candidates_cap.csv (same format; 9 verified from primary text; SEBI/AMFI letters of Jan 2022, Jun 2022, Mar 2024 seen only via AMC notices or press), D40. Not merged into events.csv: the research side decides. `notices` table (D37) lists SEBI/NSE notices with keyword tags for further candidates
 - Notes: The research side will supply the CSV; the pipeline needs the loader and the verified flag.
 
 ### R6 — Creation-unit sizes
 - Asked: 2026-11-10
 - Need: Set `creation_unit_size` in config/etfs.yaml: MONQ50 600000, MON100 250000 (scheme documents). Confirm MASPTOP50 and MAFANG from the latest Mirae factsheets; keep them in `verify` until then.
-- Status: partly done (e898930, 2026-11-14): MONQ50 600000 and MON100 250000 set; MASPTOP50 and MAFANG null and listed in `verify` until Mirae factsheets are checked
+- Status: done (0df3f24, 2026-11-14): all sizes from scheme documents (D36): MASPTOP50 550000, MAFANG 200000, MAHKTECH 800000, MON100 250000, MONQ50 600000, HNGSNGBEES 25000; every IssdCptl change since Feb 2024 is a whole multiple. Size history before the dated documents not checked
 - Notes: Units changes in DECISIONS D7 are exact multiples of these sizes, which supports both the sizes and the reading of `IssdCptl`.
 
 ### R7 — Band rules: history and widening test
 - Asked: 2026-11-10
 - Need: Find the exchange circular that introduced the T-2 NAV base and record the regime before it in config/rules.yaml (the sample starts in Jan 2021 and the T-2 rule may date from about 2022). Add the breadth test for widening if the final SEBI circular kept it: at least 50 trades from 10 client codes and 3 trading members on each side at or beyond 9.90%.
-- Status: partly done (e898930, 2026-11-14): `nav_t2` start marked VERIFY; final-circular widening rules recorded (no breadth test, moving side only). Circular introducing T-2 still to find; `regime_inferred` (R10) will date it from data
+- Status: partly done (e898930, 2026-11-14): `nav_t2` start marked VERIFY; final-circular widening rules recorded (no breadth test, moving side only). Circular introducing T-2 still to find; `regime_inferred` (R10) will date it from data. Update (0df3f24, 2026-11-14): band rules reverse-engineered from NSE's official bands (D38): paisa rounding of the base, low-limit rounding switch 9 Dec 2025, +-5% special sessions, missing-T-2-NAV fallback (prev close to 23 Oct 2025, latest NAV after), budget sessions; pre-Sep-2026 mismatches 414 -> 20
 - Notes: Mark the `nav_t2` start date as VERIFY until found. Update 2026-11-12: the final circular (HO/47/11/11(1)2026-MRD-POD3/I/13804/2026, 15 Jun 2026, para 5.1) did not keep the breadth test. Widening needs only trades at 9.90% from the base and a cooling-off of 15 minutes (5 in the last half hour); the band then widens by 5% of the base, at most twice per direction, on the moving side only. NSE's implementing circular is NSE/CMTR/76101 (ref 122/2026), 1 Sep 2026.
 
 ### R8 — Securities lending data
