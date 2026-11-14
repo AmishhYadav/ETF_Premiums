@@ -1,0 +1,62 @@
+# Feeder funds (funds of funds, "FoF") that buy one of our ETFs. Parsed by etfp.config.load_feeders.
+#
+# Plain words: a feeder is a mutual fund whose only holding is one ETF. Investors buy
+# the feeder at its NAV; the feeder then buys the ETF on the stock exchange at the market
+# price (it cannot create new ETF units because the overseas limits are used up). Each
+# plan (Regular, Direct) of a feeder is a separate AMFI scheme with its own scheme code
+# and NAV, so every plan has its own row here.
+#
+# The daily NAV of each scheme is read from the same AMFI files as the ETF NAVs
+# (clean table feeder_nav_daily).
+#
+# verified: true  = the scheme code, name and ISIN were found together in AMFI's own NAV
+#                   history file (data/raw/amfi_nav_history/2026-11-13/, rows for 12-13 Nov
+#                   2026, checked 14 Nov 2026). Which ETF each feeder holds is taken from the
+#                   scheme name ("... FANG + ETF Fund of Fund" holds the FANG+ ETF); the
+#                   fund's scheme document was not read.
+# verified: false = not checked against an AMFI file yet.
+
+feeders:
+  - name: "Motilal Oswal Nasdaq 100 Fund of Fund- Regular Plan Growth"
+    amfi_scheme_code: 145551
+    etf_symbol: MON100
+    plan: regular
+    verified: true
+  - name: "Motilal Oswal Nasdaq 100 Fund of Fund- Direct Plan Growth"
+    amfi_scheme_code: 145552
+    etf_symbol: MON100
+    plan: direct
+    verified: true
+
+  - name: "Mirae Asset NYSE FANG + ETF Fund of Fund - Regular Plan - Growth"
+    amfi_scheme_code: 148929
+    etf_symbol: MAFANG
+    plan: regular
+    verified: true
+  - name: "Mirae Asset NYSE FANG + ETF Fund of Fund - Direct Plan - Growth"
+    amfi_scheme_code: 148928
+    etf_symbol: MAFANG
+    plan: direct
+    verified: true
+
+  - name: "Mirae Asset S&P 500 Top 50 ETF Fund of Fund - Regular Plan - Growth"
+    amfi_scheme_code: 149171
+    etf_symbol: MASPTOP50
+    plan: regular
+    verified: true
+  - name: "Mirae Asset S&P 500 Top 50 ETF Fund of Fund - Direct Plan - Growth"
+    amfi_scheme_code: 149170
+    etf_symbol: MASPTOP50
+    plan: direct
+    verified: true
+
+  - name: "Mirae Asset Hang Seng TECH ETF Fund of Fund - Regular Plan - Growth"
+    amfi_scheme_code: 149380
+    etf_symbol: MAHKTECH
+    plan: regular
+    verified: true
+  - name: "Mirae Asset Hang Seng TECH ETF Fund of Fund - Direct Plan - Growth"
+    amfi_scheme_code: 149381
+    etf_symbol: MAHKTECH
+    plan: direct
+    verified: true

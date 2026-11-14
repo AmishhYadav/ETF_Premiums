@@ -37,7 +37,7 @@ from typing import Any
 
 from etfp import calendars, paths
 from etfp.collect import amc_inav
-from etfp.config import CollectSettings
+from etfp.config import CollectSettings, NseQuoteSettings, load_collect_settings, load_etfs
 from etfp.http import PoliteClient, SourceError
 from etfp.rawstore import RawRecord, RawStore
 from etfp.timeutil import IST, now_ist, require_aware
@@ -56,6 +56,10 @@ MAX_SLEEP_S = 20.0
 _MAX_ERROR_CHARS = 500
 
 SourceFn = Callable[[PoliteClient, RawStore], RawRecord]
+# An extra step does its own error handling and says what happened. It returns None when
+# it chose not to run (switched off, or Playwright not installed): then it is not a source
+# outcome at all, so it cannot raise a "source failed" alert.
+StepFn = Callable[[RawStore], "SourceOutcome | None"]
 
 
 class RecorderAlreadyRunningError(RuntimeError):
@@ -116,6 +120,57 @@ def default_sources() -> dict[str, SourceFn]:
     for amc in amc_inav.AMCS:
         sources[amc_inav.source_name(amc)] = functools.partial(amc_inav.fetch_snapshot, amc=amc)
     return sources
+
+
+NSE_QUOTE_STEP = "nse_quote"
+
+
+def _nse_quote_step(settings: NseQuoteSettings | None) -> StepFn:
+    """The browser-based NSE quote capture (order-book depth, D12) as an extra step.
+
+    Runs AFTER the plain sources so a slow browser can never delay them. It never
+    raises: whatever goes wrong becomes one warning line and, if nothing at all
+    was saved, a failed outcome in the heartbeat.
+    """
+
+    def step(store: RawStore) -> SourceOutcome | None:
+        from etfp.collect import nse_quote
+
+        cfg = settings if settings is not None else load_collect_settings().nse_quote
+        if cfg.enabled is False:
+            return None
+        if not nse_quote.playwright_available():
+            if cfg.enabled == "auto":
+                logger.warning(
+                    "nse_quote skipped: Playwright is not installed (no order-book depth this "
+                    "tick). Install: `uv sync --extra inav` then `uv run playwright install "
+                    "chromium`; or set nse_quote.enabled: false in config/collect.yaml"
+                )
+                return None
+            raise nse_quote.BrowserUnavailableError(
+                "nse_quote.enabled is true but Playwright is not installed"
+            )
+        symbols = [e.symbol for e in load_etfs().tracked()]
+        report = nse_quote.run_tick_capture(store, symbols, cfg)
+        if report.problems:
+            logger.warning("nse_quote: incomplete capture: %s", "; ".join(report.problems))
+        first = report.saved[0]
+        return SourceOutcome(
+            NSE_QUOTE_STEP,
+            True,
+            first.relpath,
+            sum(r.size_bytes for r in report.saved),
+            None,
+            None,
+            all(r.duplicate for r in report.saved),
+        )
+
+    return step
+
+
+def default_extra_steps(settings: CollectSettings | None = None) -> dict[str, StepFn]:
+    """Extra steps run after the plain sources. Today: the browser quote capture."""
+    return {NSE_QUOTE_STEP: _nse_quote_step(settings.nse_quote if settings else None)}
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +323,20 @@ def _run_source(name: str, fn: SourceFn, client: PoliteClient, store: RawStore) 
     )
 
 
+def _run_step(name: str, fn: StepFn, store: RawStore) -> SourceOutcome | None:
+    """Run one extra step. Whatever it does, the tick goes on."""
+    try:
+        return fn(store)
+    except Exception as exc:  # deliberately broad: an optional step must never stop the tick
+        message = str(exc)[:_MAX_ERROR_CHARS]
+        kind = type(exc).__name__
+        # One warning line per tick. Expected trouble (NSE refusing, browser missing) is
+        # already clear from the message; an unexpected error also gets a traceback.
+        expected = isinstance(exc, SourceError) or kind == "BrowserUnavailableError"
+        logger.warning("extra step %s failed: %s: %s", name, kind, message, exc_info=not expected)
+        return SourceOutcome(name, False, None, None, kind, message, False)
+
+
 def _record_tick_state(result: TickResult, state_dir: Path | None) -> None:
     """Write the failure lines and heartbeat. Trouble here is logged, never raised."""
     try:
@@ -302,14 +371,27 @@ def run_tick(
     store: RawStore,
     *,
     sources: Mapping[str, SourceFn] | None = None,
+    extra_steps: Mapping[str, StepFn] | None = None,
     scheduled_for: dtime | None = None,
     state_dir: Path | None = None,
     now: Callable[[], datetime] = now_ist,
 ) -> TickResult:
-    """Snapshot every source once, in order, and update the heartbeat."""
+    """Snapshot every source once, in order, then the extra steps, and update the heartbeat.
+
+    Extra steps (the browser quote capture) only run by default when ``sources`` is
+    also the default; a caller that passes its own ``sources`` gets exactly those
+    unless it passes ``extra_steps`` too. That keeps tests from starting a browser.
+    """
     registry = default_sources() if sources is None else sources
+    if extra_steps is None:
+        extra_steps = default_extra_steps() if sources is None else {}
     started = now()
-    outcomes = tuple(_run_source(name, fn, client, store) for name, fn in registry.items())
+    results = [_run_source(name, fn, client, store) for name, fn in registry.items()]
+    for name, step in extra_steps.items():
+        outcome = _run_step(name, step, store)
+        if outcome is not None:
+            results.append(outcome)
+    outcomes = tuple(results)
     result = TickResult(
         started_at=started, finished_at=now(), scheduled_for=scheduled_for, outcomes=outcomes
     )
@@ -394,6 +476,7 @@ def run_loop(
     now: Callable[[], datetime] = now_ist,
     sleep: Callable[[float], None] = time.sleep,
     sources: Mapping[str, SourceFn] | None = None,
+    extra_steps: Mapping[str, StepFn] | None = None,
 ) -> list[TickResult]:
     """Run today's whole schedule: a tick at each configured time, then return.
 
@@ -411,6 +494,8 @@ def run_loop(
             today.year,
         )
 
+    if extra_steps is None and sources is None:
+        extra_steps = default_extra_steps(settings)
     schedule = _schedule_for(today, settings)
     every = timedelta(minutes=settings.inav.every_minutes)
     results: list[TickResult] = []
@@ -437,6 +522,7 @@ def run_loop(
                     client,
                     store,
                     sources=sources,
+                    extra_steps=extra_steps,
                     scheduled_for=slot.time(),
                     state_dir=state_dir,
                     now=now,

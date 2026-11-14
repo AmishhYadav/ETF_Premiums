@@ -42,10 +42,19 @@ from etfp.clean import build_clean
 from etfp.clean.common import list_raw_files, parse_file
 from etfp.clean.manual_fof import feeder_units_daily
 from etfp.collect import bloomberg, yahoo_intraday
-from etfp.config import BandRules, Etf, EtfUniverse, load_etfs, load_rules
+from etfp.config import (
+    BandRules,
+    Etf,
+    EtfUniverse,
+    TrendsTerms,
+    load_etfs,
+    load_rules,
+    load_trends_terms,
+)
 from etfp.corporate_actions import CorporateActions, adjustment_factor, load_corporate_actions
 from etfp.export import ETF_DAY_COLUMNS, etf_day_schema_registered
 from etfp.features import (
+    attention,
     bands,
     beta,
     fair_value,
@@ -86,6 +95,7 @@ class BuildConfig:
     universe: EtfUniverse
     rules: BandRules
     actions: CorporateActions
+    trends_terms: TrendsTerms | None = None  # R15: which search terms belong to which ETF
 
     @property
     def raw_root(self) -> Path:
@@ -115,6 +125,7 @@ def load_config(root: Path) -> BuildConfig:
         universe=load_etfs(pick("etfs.yaml")),
         rules=load_rules(pick("rules.yaml")),
         actions=load_corporate_actions(pick("corporate_actions.yaml")),
+        trends_terms=load_trends_terms(pick("trends_terms.yaml")),
     )
 
 
@@ -910,6 +921,15 @@ def _symbol_frame(
     free_units = units_f - df["feeder_units"]
     df["float_net"] = (free_units * df["nav_known_at_close"]).where(df["feeder_units"].notna())
 
+    # R15: Google Trends attention for this ETF's configured terms (NaN when not all exist).
+    terms = cfg.trends_terms
+    df["attention"] = attention.attention_series(
+        tables["trends_daily"],
+        terms.terms_for(sym) if terms is not None else [],
+        days,
+        geo=terms.geo if terms is not None else "India",
+    )
+
     df["excess_rupees"] = vol * (df["avg_price"] - 1.2 * df["nav_t2"]).clip(lower=0)
 
     df["dq_nav_same_date_missing"] = _bools([bool(x) for x in df["nav_same_date"].isna()])
@@ -957,6 +977,7 @@ def build_etf_day(
             "units_monthly",
             "fof_monthly",
             "bse_prices",
+            "trends_daily",
         )
     }
     sizes = units.creation_unit_sizes(cfg.universe)

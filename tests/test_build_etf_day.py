@@ -81,15 +81,17 @@ def test_prem_raw_on_9_nov_is_the_press_number(plain) -> None:
     assert round(row["prem_raw"] * 100, 1) == 100.8
 
 
-def test_stale_nav_is_flagged_not_hidden(plain) -> None:
+def test_stale_nav_is_flagged_and_its_value_blanked(plain) -> None:
     # The fixture has no AMFI NAV dated 6 Nov, so the freshest knowable NAV is from 10 Sep.
+    # 60 days old is a hole in the NAV history, not a lag: the date and lag stay visible
+    # and flagged, but the value is blanked so no premium is invented from it (D31).
     _, _, df = plain
     row = _row(df, "MONQ50", D9)
     assert row["nav_known_date"] == date(2026, 9, 10)
     assert row["nav_publication_lag_days"] == 60
     assert bool(row["dq_nav_stale"])
-    assert row["fv_method"] == "nav_only"  # no futures data in this root: falls back, says so
-    assert row["fv"] == pytest.approx(row["nav_known_at_close"])
+    assert pd.isna(row["nav_known_at_close"]) and pd.isna(row["prem_nav_known"])
+    assert row["fv_method"] == "no_nav" and pd.isna(row["fv"])
 
 
 def test_units_turnover_and_creation_total_on_9_nov(plain) -> None:
@@ -138,7 +140,8 @@ def test_fair_value_from_bloomberg_matches_hand_computation(with_bloomberg) -> N
     assert round(row["prem_nav_known"] * 100, 1) == 107.1
     assert row["log_prem_fv"] == pytest.approx(math.log(229.67 / fv))
     assert row["pi"] == row["log_prem_fv"] and row["prem_known"] == row["prem_nav_known"]
-    assert row["x_april"] == pytest.approx(math.log(229.67 / (1.2 * fv)))
+    assert row["x_april"] == pytest.approx(math.log(229.67 / (1.2 * 110.8852)))  # D30
+    assert row["x_april_fv"] == pytest.approx(math.log(229.67 / (1.2 * fv)))
     assert "bloomberg/2026-11-13/export.csv" in row["fv_input_files"]
     assert row["nav_known_source_file"].startswith("amfi_nav_history/")
     assert not bool(row["dq_nav_stale"])

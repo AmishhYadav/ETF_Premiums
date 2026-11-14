@@ -58,14 +58,16 @@ def test_monq50_4_sep_2026_raw_premium() -> None:
     # FV 130: 141.93 / 130 - 1 = 0.0917692308 ; ln(141.93 / 130) = 0.0877995279.
     assert out["prem_fv"].iloc[0] == pytest.approx(0.0917692308, abs=1e-9)
     assert out["log_prem_fv"].iloc[0] == pytest.approx(0.0877995279, abs=1e-9)
-    # x_april = ln(141.93 / (1.2 x 130)) = ln(141.93 / 156) = -0.0945220289.
-    assert out["x_april"].iloc[0] == pytest.approx(-0.0945220289, abs=1e-9)
-    # BLUEPRINT variant on the known NAV: ln(141.93 / (1.2 x 117)) = ln(1.01090) = 0.0108...
-    assert out["x_april_nav_known"].iloc[0] == pytest.approx(math.log(141.93 / 140.4), abs=1e-12)
+    # x_april_fv = ln(141.93 / (1.2 x 130)) = ln(141.93 / 156) = -0.0945220289.
+    assert out["x_april_fv"].iloc[0] == pytest.approx(-0.0945220289, abs=1e-9)
+    # x_april on the known NAV (D30): ln(141.93 / (1.2 x 117)) = ln(141.93 / 140.4)
+    # = ln(1.0108974359) = 0.0108384867.
+    assert out["x_april"].iloc[0] == pytest.approx(0.0108384867, abs=1e-9)
+    assert "x_april_nav_known" not in out.columns
 
 
 def test_x_april_sign() -> None:
-    # Price exactly 1.2 x FV -> x_april = 0 ; above -> positive ; below -> negative.
+    # Price exactly 1.2 x NAV known -> x_april = 0 ; above -> positive ; below -> negative.
     df = pd.DataFrame(
         {
             "close": [120.0, 130.0, 100.0],
@@ -95,7 +97,10 @@ def test_premium_columns_missing_inputs_are_nan_not_zero() -> None:
     assert out["prem_raw"].isna().all()
     assert out["prem_nav_known"].tolist()[0] == pytest.approx(0.0)
     assert np.isnan(out["prem_nav_known"].iloc[1])
-    assert out[["prem_band_ref", "prem_fv", "log_prem_fv", "x_april"]].isna().all().all()
+    assert out[["prem_band_ref", "prem_fv", "log_prem_fv", "x_april_fv"]].isna().all().all()
+    # x_april uses the known NAV (present): row 0 = ln(100 / 120); row 1 has no close -> NaN.
+    assert out["x_april"].iloc[0] == pytest.approx(math.log(100 / 120))
+    assert np.isnan(out["x_april"].iloc[1])
 
 
 def test_inav_premium() -> None:

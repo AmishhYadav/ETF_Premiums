@@ -20,3 +20,17 @@ http:
   nse_min_interval_s: 1.5
   default_interval_s: 0.5   # other sources (AMFI, Yahoo, ...)
   max_retries: 3            # with exponential backoff
+
+# NSE order-book depth (total buy/sell quantity, bid/ask levels) and iNAV from NSE's own
+# quote page, through a real browser (DECISIONS D12). Needs the optional extra:
+#   uv sync --extra inav && uv run playwright install chromium
+# It runs after the other sources in each tick; if it fails the other sources are unaffected.
+nse_quote:
+  enabled: false          # OFF until a supervised capture works (D31). auto = on when Playwright is installed; true = always; false = off
+  headless: true
+  channel: null           # null = Playwright's own headless browser; "chromium" = full browser, new headless mode
+  browser_executable: null  # path of a browser program to use instead of Playwright's
+  page_gap_s: 1.5         # pause between two page loads (project rule: at least 1.5)
+  wait_s: 15              # longest wait for one page's own answers
+  launch_timeout_s: 30
+  tick_budget_s: 240      # stop starting new pages after this long, so the next tick is never late

@@ -42,7 +42,7 @@ Dated rule changes, caps, cautions and notices. The research side supplies the f
 
 ## `data/manual/fof_monthly.csv` -> table `fof_monthly` (R4, R14)
 
-One row per feeder fund (fund of funds) per month end. Feeders in R4: Motilal Oswal Nasdaq 100 FoF (holds MON100); Mirae Asset NYSE FANG+ ETF FoF (MAFANG), S&P 500 Top 50 ETF FoF (MASPTOP50), Hang Seng TECH ETF FoF (MAHKTECH). The list still has to be confirmed from AMFI.
+One row per feeder fund (fund of funds) per month end. Feeders in R4: Motilal Oswal Nasdaq 100 FoF (holds MON100); Mirae Asset NYSE FANG+ ETF FoF (MAFANG), S&P 500 Top 50 ETF FoF (MASPTOP50), Hang Seng TECH ETF FoF (MAHKTECH). The list was confirmed from AMFI's own NAV file on 14 Nov 2026; every plan (Regular and Direct) has its own scheme code. They are in `config/feeders.yaml`, and their daily NAVs go into the clean table `feeder_nav_daily` (`scheme_code`, `fund_name`, `etf_symbol`, `nav_date`, `nav`, `source_file`) from the same AMFI files as the ETF NAVs (AMFI history beats the daily file; "N.A." is skipped, never zero; a day with no AMFI row has no row).
 
 | column | required | meaning |
 |---|---|---|
@@ -102,3 +102,7 @@ How the chain is built, per term:
 Columns: `term`, `geo`, `date`, `value` (chained, maximum 100), `window_value` (the number printed in the file that supplied the day), `n_windows` (windows containing the day), `source_file` (that raw file). Key: (`term`, `geo`, `date`).
 
 Limits: values compare days of one term with each other, not different terms. Pull order and pull date do not change the result, but a window pulled later can differ slightly from one pulled now (Trends samples its data), so keep every raw file. The build stops with an error naming the file if a window shares no day with the series before it (pull a window that overlaps), if the shared days add up to zero, or if the file is weekly rather than daily (the window was longer than about 270 days).
+
+### From search interest to `etf_day.attention`
+
+`config/trends_terms.yaml` says which search term belongs to which ETF (MONQ50: "MONQ50" and "Nasdaq Q50 ETF"; MON100: "MON100" and "Motilal Oswal Nasdaq 100 ETF"; MAFANG: "MAFANG" and "Mirae FANG ETF"; MASPTOP50 and MAHKTECH: none yet; "international ETF premium" is about the whole group and stays unassigned). `attention` for an ETF and a day is the plain average of its terms on that calendar day, **only if every one of its terms has a number that day**; otherwise it is empty. Reason: each term is scaled to its own maximum, so averaging "whichever terms exist" would make the series jump on the day a term starts or stops. The value is the Trends number for the same day, which includes searches after the 15:30 close: lag it in analysis if you need what was known at the close. To add a term, add a line to the yaml and pull its windows.

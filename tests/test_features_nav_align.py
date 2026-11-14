@@ -306,3 +306,19 @@ def test_nav_t2_long_gap_is_nan() -> None:
     out = na.align_nav(nav, [date(2026, 9, 9)], "US")
     r = out.iloc[0]
     assert pd.isna(r.nav_t2) and r.nav_t2_nav_date is None
+
+
+def test_nav_known_too_stale_is_blanked_but_date_kept() -> None:
+    # Only a NAV from 20 Aug exists; on 9 Sep it is 20 days old: a hole, not a lag.
+    nav = pd.DataFrame({"nav_date": [date(2026, 8, 20)], "nav": [100.0]})
+    r = na.align_nav(nav, [date(2026, 9, 9)], "US").iloc[0]
+    assert r.nav_known_date == date(2026, 8, 20)
+    assert r.nav_publication_lag_days == 20
+    assert pd.isna(r.nav_known_at_close)
+
+
+def test_nav_known_monday_lag_3_is_kept() -> None:
+    # Mon 2 Nov 2026: Friday 30 Oct NAV (lag 3) is a normal lag and stays.
+    nav = pd.DataFrame({"nav_date": [date(2026, 10, 29), date(2026, 10, 30)], "nav": [1.0, 2.0]})
+    r = na.align_nav(nav, [date(2026, 11, 2)], "US").iloc[0]
+    assert r.nav_known_date == date(2026, 10, 30) and r.nav_known_at_close == 2.0

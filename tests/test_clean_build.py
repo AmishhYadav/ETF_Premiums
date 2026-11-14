@@ -17,9 +17,13 @@ from etfp.store import SCHEMAS, Store
 from test_clean_helpers import build_sample, fixture_bytes, make_raw_root, save_raw
 
 BUILT = [t for t, _ in CLEANERS]
-# Tables read from hand-typed files (data/manual) or hand-downloaded Trends files:
-# they are legitimately empty when nobody has entered anything.
-MANUAL = {"events", "fof_monthly", "units_monthly", "trends_daily"}
+# Tables read from hand-typed files (data/manual), hand-downloaded Trends files or hand-made
+# Bloomberg exports, and the feeder NAVs (the sample AMFI files hold no feeder fund): they are
+# legitimately empty in the sample.
+MANUAL = {
+    "events", "fof_monthly", "units_monthly", "trends_daily", "feeder_nav_daily",
+    "china_etf_daily",
+}  # fmt: skip
 
 
 @pytest.fixture(scope="module")

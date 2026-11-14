@@ -184,3 +184,79 @@ def test_not_json_amc_file_stops_the_build_naming_the_file(tmp_path: Path) -> No
 def test_no_recorder_files_gives_an_empty_table(tmp_path: Path) -> None:
     df = build_snaps(tmp_path)
     assert df.empty and list(df.columns) == inav_snapshots.COLUMNS
+
+
+# -- the collector's two-file layout: price block + order book (nse_quote) ----------------
+
+PRICE_BLOCK = {
+    "info": {"symbol": "MONQ50"},
+    "metadata": {"lastUpdateTime": "12-Nov-2026 11:30:15"},
+    "priceInfo": {"lastPrice": 240.5, "iNavValue": 112.25},
+}
+ORDER_BOOK = {"marketDeptOrderBook": QUOTE["marketDeptOrderBook"]}
+
+
+def add_pair(root: Path, *, price: object | None = PRICE_BLOCK, book: object | None = ORDER_BOOK):
+    if price is not None:
+        add_quote(root, price, "MONQ50_113020.json")
+    if book is not None:
+        add_quote(root, book, "MONQ50_trade_info_113020.json")
+
+
+def test_two_files_of_one_page_visit_become_one_row_with_both_in_the_lineage(
+    tmp_path: Path,
+) -> None:
+    root = make_raw_root(tmp_path)
+    add_pair(root)
+    df = build_snaps(root)
+    r = one(df, "MONQ50", "nse_quote")
+    assert r["last_price"] == 240.5 and r["inav"] == 112.25
+    assert r["total_buy_qty"] == 1200 and r["total_sell_qty"] == 34500
+    assert (r["bid"], r["ask"]) == (240.0, 241.0)
+    assert r["source_file"] == (
+        "nse_quote/2026-11-12/MONQ50_113020.json;nse_quote/2026-11-12/MONQ50_trade_info_113020.json"
+    )
+    assert (df["source"] == "nse_quote").sum() == 1  # not two rows
+
+
+def test_price_block_without_order_book_keeps_price_and_inav_with_empty_depth(
+    tmp_path: Path,
+) -> None:
+    root = make_raw_root(tmp_path)
+    add_pair(root, book=None)
+    r = one(build_snaps(root), "MONQ50", "nse_quote")
+    assert r["inav"] == 112.25
+    assert pd.isna(r["total_buy_qty"]) and pd.isna(r["depth_json"]) and math.isnan(r["bid"])
+
+
+def test_order_book_without_price_block_is_a_book_only_row(tmp_path: Path) -> None:
+    root = make_raw_root(tmp_path)
+    add_pair(root, price=None)
+    r = one(build_snaps(root), "MONQ50", "nse_quote")
+    assert r["total_sell_qty"] == 34500 and r["ask_qty"] == 5000
+    assert math.isnan(r["last_price"]) and math.isnan(r["inav"])
+
+
+def test_pairs_of_different_times_are_not_mixed(tmp_path: Path) -> None:
+    root = make_raw_root(tmp_path)
+    add_pair(root)
+    early = {"marketDeptOrderBook": {**ORDER_BOOK["marketDeptOrderBook"], "totalBuyQuantity": 7}}
+    add_quote(root, early, "MONQ50_trade_info_111500.json")  # a book with no price block
+    df = build_snaps(root)
+    q = df[df["source"] == "nse_quote"].set_index("ts")
+    assert len(q) == 2
+    assert q.loc[pd.Timestamp("2026-11-12 11:30:20+05:30"), "total_buy_qty"] == 1200
+    assert q.loc[pd.Timestamp("2026-11-12 11:15:00+05:30"), "total_buy_qty"] == 7
+
+
+def test_an_untracked_symbol_in_the_pair_is_dropped(tmp_path: Path) -> None:
+    root = make_raw_root(tmp_path)
+    add_pair(root, price={**PRICE_BLOCK, "info": {"symbol": "NOTMINE"}})
+    assert (build_snaps(root)["source"] == "nse_quote").sum() == 0
+
+
+def test_price_block_in_an_unknown_shape_still_stops_the_build(tmp_path: Path) -> None:
+    root = make_raw_root(tmp_path)
+    add_pair(root, price={"info": {"symbol": "MONQ50"}, "somethingNew": {}}, book=None)
+    with pytest.raises(CleanError, match=r"MONQ50_113020\.json"):
+        build_snaps(root)

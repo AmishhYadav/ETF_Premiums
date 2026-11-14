@@ -17,9 +17,12 @@ with a different NAV, because they answer different questions:
                    Indian close with futures and the rupee (``fair_value``).
 ``log_prem_fv``    ln(close / FV). Same information on a log scale; additive over
                    time and symmetric (a +20% and a -16.7% move are +/-0.182).
-``x_april``        ln(close / (1.2 x FV)): the log distance above the ceiling a
-                   20%-above-value band would allow after 1 Apr 2027. Positive
-                   means the price is above what that band would permit.
+``x_april``        ln(close / (1.2 x NAV known at close)): the log distance above
+                   the ceiling the April 2027 band (anchored on the previous NAV,
+                   +20% at most) would allow. Positive means the price is above
+                   what that band would permit. Owner's choice, 14 Nov 2026 (D30).
+``x_april_fv``     ln(close / (1.2 x FV)): the same on fair value (was ``x_april``
+                   before schema 1.3.0).
 ``prem_inav``      last price / iNAV - 1, from intraday snapshots only.
 
 Every ratio returns NaN when a number is missing or not positive; nothing is
@@ -41,7 +44,7 @@ PREMIUM_COLUMNS = (
     "prem_fv",
     "log_prem_fv",
     "x_april",
-    "x_april_nav_known",
+    "x_april_fv",
 )
 
 
@@ -86,8 +89,9 @@ def premium_columns(
     Hand example, MONQ50 on 4 Sep 2026: close 141.93, NAV dated 4 Sep 118.7371
     -> prem_raw = 141.93 / 118.7371 - 1 = 0.19533 (19.53%, the figure Value Research
     reported). With FV 130.00 (made up): prem_fv = 141.93 / 130 - 1 = 0.09177;
-    log_prem_fv = ln(141.93 / 130) = 0.08780;x_april = ln(141.93 / (1.2 x 130)) =
+    log_prem_fv = ln(141.93 / 130) = 0.08780; x_april_fv = ln(141.93 / (1.2 x 130)) =
     ln(0.90981) = -0.09452 (price is 9.5% inside what a +20% band would allow).
+    With NAV known 117.00 (made up): x_april = ln(141.93 / 140.40) = 0.010838.
     """
     close = df[close_col]
     fv = df[fv_col]
@@ -97,11 +101,11 @@ def premium_columns(
     out["prem_band_ref"] = ratio_minus_one(close, df[nav_t2_col])
     out["prem_fv"] = ratio_minus_one(close, fv)
     out["log_prem_fv"] = log_ratio(close, fv)
-    cap_fv = _num(fv) * april_cap_multiple
-    out["x_april"] = log_ratio(close, cap_fv)  # type: ignore[arg-type]
-    # BLUEPRINT "Measures" defines x_april on the known NAV instead of FV. Both kept
-    # until the owner confirms which one the paper uses (see report).
-    out["x_april_nav_known"] = log_ratio(close, _num(df[nav_known_col]) * april_cap_multiple)  # type: ignore[arg-type]
+    # From 1 Apr 2027 the band base is the previous NAV, so the cap the price will face
+    # is 1.2 x the NAV known at the close (BLUEPRINT definition; D30).
+    cap_nav = _num(df[nav_known_col]) * april_cap_multiple
+    out["x_april"] = log_ratio(close, cap_nav)  # type: ignore[arg-type]
+    out["x_april_fv"] = log_ratio(close, _num(fv) * april_cap_multiple)  # type: ignore[arg-type]
     return out[list(PREMIUM_COLUMNS)]
 
 

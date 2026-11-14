@@ -18,7 +18,8 @@ This module computes, for every Indian trading day *t*:
                              this one, but it is not synchronous with the close).
 ``nav_known_date``           date of the freshest NAV whose underlying close is at
                              or before 15:30 IST on *t* (see rule below).
-``nav_known_at_close``       that NAV.
+``nav_known_at_close``       that NAV; NaN if it is more than ``NAV_KNOWN_MAX_STALE_DAYS``
+                             calendar days old (a hole in the NAV history).
 ``nav_known_underlying_date`` the underlying-market session whose close is baked
                              into that NAV: the "a" in fair value
                              ``FV = NAV_a x F_t/F[close of a] x S_t/S_a``.
@@ -95,6 +96,13 @@ class CalendarLike(Protocol):
 # US holiday leaves a one-session hole; a long weekend plus a holiday is at most
 # about 4 calendar days. Anything older is a data gap, not a holiday, so NaN.
 NAV_T2_MAX_STALE_DAYS = 5
+
+# How old the "known" NAV may be before it is treated as unknown. Normal lags are
+# 1 day (US ETF, mid-week), 3 (Monday) and up to about 5 over a long holiday
+# weekend. Anything older means our NAV history has a hole (e.g. a backfill not
+# finished): a two-year-old NAV would invent a huge premium. The date and lag are
+# still reported, so dq_nav_stale shows the hole; only the NAV value is blanked.
+NAV_KNOWN_MAX_STALE_DAYS = 7
 
 
 def _clean_nav(nav: pd.DataFrame) -> pd.Series:
@@ -181,6 +189,8 @@ def align_nav(
             known_nav = float(series.iloc[idx])
             known_underlying = info_session[idx]
             lag: int | None = (t - known_date).days
+            if lag > NAV_KNOWN_MAX_STALE_DAYS:
+                known_nav = float("nan")
         else:
             known_date, known_nav, known_underlying, lag = None, float("nan"), None, None
 

@@ -225,6 +225,21 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 - Evening 19:45 IST Mon–Fri: collect all daily sources → build → export → alerts. Morning 10:35 IST Mon–Fri for the previous session: gap-fill, force re-download of the AMFI window (overseas NAVs, D10), build, export, alerts. Mon–Fri (not Tue–Sat) so Monday fetches Friday's US NAV. A failed source does not stop the build; alerts always run; missing Telegram credentials = warning. Lock `data/state/run_daily.lock` (stale after 2 h); run records in `data/state/runs/`.
 - First supervised real run 14 Nov 2026 (morning, day 13 Nov): collect, build (15,434 ETF-days, 3 min) and export OK; Yahoo returned 429 again. Plists printed by `etfp ops launchd-plist --job daily-evening|daily-morning`; **not installed yet** (Amish to decide).
 
+
+### D30. Owner decisions, 14 Nov 2026
+- **x_april (Amish).** `x_april` = ln(close / (1.2 × `nav_known_at_close`)) — BLUEPRINT definition, and the April 2027 band is anchored on NAV. The fair-value version is `x_april_fv` (was `x_april`); `x_april_nav_known` removed. MEANING CHANGE, schema 1.3.0.
+- **Free futures source (Amish: look for another).** Search on 14 Nov found no free source of multi-year intraday NQ/ES futures: FinzData free = 30 days of daily bars; MarketParquet free = one sample week; Kibot, FirstRateData, Portara = paid (FirstRateData ≈ $100/yr). For USD/INR, Twelve Data lists 1-minute FX series with a free credit tier (whether free covers minute history is unconfirmed); TraderMade's free tier has no minute history. Conclusion: history must come from the Bloomberg export; a free key (e.g. Twelve Data) could cover forward FX only. Signing up for any API is Amish's call. A retry of Yahoo with browser-like headers was not attempted (it would mean working around their block). Yahoo stays in the daily job and fails loudly.
+- **openpyxl (Amish: no).** Keep the standard-library .xlsx reader (D24).
+- **Daily schedules installed** (Amish asked to proceed): `com.etfp.daily-evening` (19:45 IST) and `com.etfp.daily-morning` (10:35 IST), Mon–Fri. `.env` created from `.env.example` (empty, mode 600) for Telegram.
+
+
+### D31. NSE quote capture, feeder NAVs, attention, China ETFs, stale-NAV cap (schema 1.3.0)
+- **NSE quote capture (D12 follow-up).** `etfp.collect.nse_quote` opens each ETF's NSE quote page in Playwright and saves the page's own JSON answers untouched (`nse_quote/<date>/<SYM>_HHMMSS.json` price block, `<SYM>_trade_info_HHMMSS.json` order book); the clean layer joins them into one `nse_quote` row (`source_file` lists both). One supervised headless attempt on 14 Nov got `ERR_HTTP2_PROTOCOL_ERROR` (NSE bot protection); no evasion was tried. The recorder runs it as an isolated extra step after the plain sources; any failure is one warning and never affects AMC / NSE ETF-API capture. **Shipped `nse_quote.enabled: false`** until Amish runs `uv run playwright install chromium` and a supervised `uv run etfp collect nse-quote -s MONQ50 --headed` in market hours. Response shape (iNAV, depth field names) still OPEN.
+- **Feeder NAVs (R14).** `config/feeders.yaml`: Regular/Direct plans of four feeders — MON100 145551/145552, MAFANG 148929/148928, MASPTOP50 149171/149170, MAHKTECH 149380/149381 (codes, names and ISINs checked in the AMFI file of 13 Nov 2026; feeder→ETF link from scheme names). No Motilal Nasdaq Q50 feeder exists in AMFI. Table `feeder_nav_daily`.
+- **attention (R15).** Mean of the ETF's terms in `config/trends_terms.yaml`, NaN unless every term has a value that day (avoids jumps from mixing differently scaled terms). Same-day Trends value (includes after-close searches). MASPTOP50, MAHKTECH have no terms.
+- **China QDII ETFs (R17).** `china_etf_daily` from Bloomberg instruments `<code> CH` (Asia/Shanghai). Licensed: research export only, never the open dataset. OPEN: `EQY_SH_OUT` unit; NAV date vs US close for the premium.
+- **Stale known NAV.** The first real 1.3.0 build showed MONQ50's `nav_known_at_close` on 12 Nov 2026 = 68.8755, a NAV from Nov 2024 (AMFI backfill not yet at 2026), giving a fake 236% premium. Rule: a known NAV more than 7 calendar days old is blanked (date and lag kept, `dq_nav_stale` set); premiums, `fv`, `x_april` become empty, `fv_method = no_nav`. MEANING CHANGE in 1.3.0.
+
 ---
 
 ## Open VERIFY items (running list)
@@ -250,3 +265,5 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 | AMFI NAV missing on Muhurat days the exchange used (e.g. 1 Nov 2024) | nav_t2 band base | OPEN (D24) |
 | SLB bhavcopy fee column order | R8 | OPEN — inferred from data (D27) |
 | Yahoo intraday access | free fair value | OPEN — 429 on 13 and 14 Nov (D22, D29) |
+| NSE quote JSON shape + capture blocked for headless Chromium | iNAV depth (CLAUDE.md) | OPEN (D31) |
+| China `EQY_SH_OUT` unit; NAV date vs US close | R17 | OPEN (D31) |

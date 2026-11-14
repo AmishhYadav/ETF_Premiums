@@ -1,0 +1,29 @@
+# Which Google Trends search term measures attention to which ETF (R15).
+# Parsed by etfp.config.load_trends_terms; used for the `attention` column of etf_day.
+#
+# Plain words: Google Trends gives, for a search term, a daily number from 0 to 100
+# (100 = the busiest day of that term; every term is scaled on its own). We pull the terms
+# listed in docs/REQUESTS.md R15 by hand into data/raw/trends/ (docs/manual_data.md) and
+# chain the 90-day windows into one series per term (clean table trends_daily).
+#
+# etf_day.attention for an ETF and a day =
+#   the simple average of this ETF's terms on that calendar day, but ONLY when EVERY term
+#   listed here for that ETF has a number that day; otherwise empty (NaN).
+# Why strict: terms are each scaled to their own maximum, so averaging "whichever terms
+# happen to exist" would make the series jump when a term starts or stops. An ETF with no
+# term listed (MASPTOP50, MAHKTECH: R15 names none) has empty attention.
+# The number is the Trends value for the same calendar day t. It includes search activity
+# after the 15:30 IST close, so it is not known at the close; lag it in analysis if needed.
+#
+# The generic term "international ETF premium" is NOT assigned to any ETF (it is about the
+# whole group); it stays in trends_daily for the research side to use directly.
+
+geo: India   # must match the region in the Trends file header, e.g. "MONQ50: (India)"
+
+terms:
+  - {term: "MONQ50", etf_symbol: MONQ50}
+  - {term: "Nasdaq Q50 ETF", etf_symbol: MONQ50}
+  - {term: "MON100", etf_symbol: MON100}
+  - {term: "Motilal Oswal Nasdaq 100 ETF", etf_symbol: MON100}
+  - {term: "MAFANG", etf_symbol: MAFANG}
+  - {term: "Mirae FANG ETF", etf_symbol: MAFANG}

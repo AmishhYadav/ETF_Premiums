@@ -9,6 +9,8 @@ Files
 - ``config/etfs.yaml``     the ETF universe (SPEC section 4)
 - ``config/rules.yaml``    price-band regimes (SPEC section 7)
 - ``config/collect.yaml``  settings for the intraday iNAV snapshot recorder
+- ``config/feeders.yaml``  feeder funds (funds of funds) and their AMFI scheme codes (R14)
+- ``config/trends_terms.yaml``  which Google Trends search term belongs to which ETF (R15)
 """
 
 from __future__ import annotations
@@ -348,9 +350,97 @@ class HttpSettings(_Frozen):
         return value
 
 
+class Feeder(_Frozen):
+    """One feeder fund (fund of funds) that buys one of the ETFs (requests R4, R14).
+
+    A feeder is a mutual fund whose only holding is one ETF. Each plan (Regular and
+    Direct) of a feeder is a separate AMFI scheme with its own code and NAV.
+    """
+
+    name: str = Field(min_length=1)  # scheme name exactly as AMFI prints it
+    amfi_scheme_code: int = Field(gt=0)
+    etf_symbol: str = Field(min_length=1)  # the ETF it holds, as in etfs.yaml
+    plan: Literal["regular", "direct"]
+    verified: bool = False  # True once the code was found in AMFI's own file
+    notes: str | None = None
+
+
+class FeederList(_Frozen):
+    feeders: tuple[Feeder, ...]
+
+    @model_validator(mode="after")
+    def _unique_codes(self) -> FeederList:
+        codes = [f.amfi_scheme_code for f in self.feeders]
+        dupes = sorted({str(c) for c in codes if codes.count(c) > 1})
+        if dupes:
+            raise ValueError(f"duplicate feeder amfi_scheme_code: {', '.join(dupes)}")
+        return self
+
+
+def load_feeders(path: Path | None = None) -> FeederList:
+    """Load the feeder-fund list (default: ``config/feeders.yaml``)."""
+    return _load_yaml_model(FeederList, path or config_dir() / "feeders.yaml")
+
+
+class TrendsTerm(_Frozen):
+    """One Google Trends search term and the ETF whose attention it measures."""
+
+    term: str = Field(min_length=1)
+    etf_symbol: str = Field(min_length=1)
+
+
+class TrendsTerms(_Frozen):
+    """Which search terms measure attention to which ETF (request R15)."""
+
+    geo: str = "India"  # the region label in the Trends file header
+    terms: tuple[TrendsTerm, ...]
+
+    @model_validator(mode="after")
+    def _no_repeats(self) -> TrendsTerms:
+        pairs = [(t.term, t.etf_symbol) for t in self.terms]
+        dupes = sorted({f"{a} -> {b}" for a, b in pairs if pairs.count((a, b)) > 1})
+        if dupes:
+            raise ValueError(f"repeated trends term: {', '.join(dupes)}")
+        return self
+
+    def terms_for(self, symbol: str) -> list[str]:
+        """The search terms assigned to one ETF, in file order."""
+        return [t.term for t in self.terms if t.etf_symbol == symbol]
+
+
+def load_trends_terms(path: Path | None = None) -> TrendsTerms:
+    """Load the term -> ETF map (default: ``config/trends_terms.yaml``)."""
+    return _load_yaml_model(TrendsTerms, path or config_dir() / "trends_terms.yaml")
+
+
+class NseQuoteSettings(_Frozen):
+    """The browser-based NSE quote capture (order-book depth, DECISIONS D12).
+
+    NSE refuses plain scripts on its quote API, so a real browser opens the public
+    quote page of each ETF and we save the answers the page itself asks for.
+    """
+
+    # "auto" = on when the optional `playwright` package is installed (the `inav`
+    # extra); true = always try (a missing browser then counts as a failed source);
+    # false = never.
+    enabled: bool | Literal["auto"] = "auto"
+    headless: bool = True
+    # Playwright browser channel. None = its own small headless browser. "chromium" =
+    # the full browser in its new headless mode (what to try if NSE refuses the first).
+    channel: str | None = None
+    # Path of a browser program to use instead of the one Playwright downloaded.
+    browser_executable: str | None = None
+    page_gap_s: float = Field(default=1.5, ge=1.5)  # pause between two page loads
+    wait_s: float = Field(default=15.0, gt=0)  # longest wait for one page's own answers
+    launch_timeout_s: float = Field(default=30.0, gt=0)
+    # Never let the capture eat the next tick: stop starting new pages after this long.
+    tick_budget_s: float = Field(default=240.0, gt=0)
+
+
 class CollectSettings(_Frozen):
     inav: InavSettings
     http: HttpSettings
+    nse_quote: NseQuoteSettings = NseQuoteSettings()
 
     def inav_tick_times(self) -> list[time]:
         """Snapshot times: start, start+every, ... up to end (inclusive), then post_close.

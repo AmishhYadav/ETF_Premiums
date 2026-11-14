@@ -31,7 +31,9 @@ from etfp import paths
 from etfp.clean import (
     band_official,
     bse_prices,
+    china_etf,
     etf_master,
+    feeder_nav,
     inav_snapshots,
     manual_events,
     manual_fof,
@@ -60,9 +62,11 @@ CLEANERS = (
     ("inav_snapshots", inav_snapshots),
     ("events", manual_events),
     ("fof_monthly", manual_fof),
+    ("feeder_nav_daily", feeder_nav),
     ("units_monthly", manual_units),
     ("trends_daily", manual_trends),
     ("bse_prices", bse_prices),
+    ("china_etf_daily", china_etf),
     ("slb_eligible", slb.ELIGIBLE),
     ("slb_daily", slb.DAILY),
 )

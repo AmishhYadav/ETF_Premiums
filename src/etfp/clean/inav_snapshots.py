@@ -25,11 +25,14 @@ holiday or after the close it is older than ``ts`` (that snapshot is stale).
 Order book (``nse_quote``): CLAUDE.md requires keeping total buy/sell quantity
 and the depth from the raw quote JSON. This table does: ``total_buy_qty`` and
 ``total_sell_qty``, the best bid/ask, and ``depth_json`` with every level in the
-book. NO QUOTE COLLECTOR EXISTS YET (DECISIONS D12), so the reader below is written
-against the JSON shape of NSE's public quote API as we expect it and has only been
-tested on a hand-made sample. Its field names are UNVERIFIED until the first real
-capture. If a file does not look as expected the build stops and names the file;
-nothing is guessed.
+book. The collector (``etfp.collect.nse_quote``, a real browser session, DECISIONS
+D12) saves the two answers NSE's quote page receives as two raw files with the same
+time: ``SYM_HHMMSS.json`` (price block: last price, iNAV) and
+``SYM_trade_info_HHMMSS.json`` (order book). They are paired here and become ONE row;
+its ``source_file`` lists both files separated by ``;``. The reader has only been
+tested on hand-made samples shaped like NSE's public quote API: its field names are
+UNVERIFIED until the first real capture. If a file does not look as expected the
+build stops and names the file; nothing is guessed.
 
 Only ETFs listed in config/etfs.yaml are kept (the raw files hold hundreds more).
 """
@@ -64,6 +67,7 @@ _INTS = ["bid_qty", "ask_qty", "total_buy_qty", "total_sell_qty", "volume"]
 _STRINGS = ["depth_json", "amc_ts_raw", "market_status"]
 
 _FETCH_TIME = re.compile(r"(\d{2})(\d{2})(\d{2})\.json\Z")
+_QUOTE_FILE = re.compile(r"(?P<prefix>.+?)(?P<kind>_trade_info)?_(?P<hms>\d{6})\.json\Z")
 
 
 def build(ctx: CleanContext) -> pd.DataFrame:
@@ -78,9 +82,9 @@ def build(ctx: CleanContext) -> pd.DataFrame:
         for rf in list_raw_files(ctx.raw_root, amc_inav.source_name(amc)):
             ts = _fetch_time(rf)
             frames.append(_amc(rf, amc, ts, symbols))
-    for rf in list_raw_files(ctx.raw_root, NSE_QUOTE_SOURCE):
+    for rf, companion, hint in _pair_quote_files(list_raw_files(ctx.raw_root, NSE_QUOTE_SOURCE)):
         ts = _fetch_time(rf)
-        frames.append(_nse_quote(rf, ts, symbols))
+        frames.append(_nse_quote(rf, ts, symbols, companion, hint))
 
     frames = [f for f in frames if not f.empty]
     if not frames:
@@ -202,43 +206,113 @@ def _levels(book: Any, side: str, rf: RawFile) -> list[tuple[float, int | None]]
     return levels
 
 
-def parse_nse_quote(content: bytes, rf: RawFile) -> dict[str, Any]:
-    """Read one saved NSE quote (JSON). Returns the fields of one inav_snapshots row.
+def _pair_quote_files(
+    files: list[RawFile],
+) -> list[tuple[RawFile, RawFile | None, str | None]]:
+    """Pair each price-block file with its order-book file (same day, symbol and time).
 
-    Expected shape (UNVERIFIED against a live capture)::
-
-        {"info": {"symbol": "MONQ50"},
-         "metadata": {"lastUpdateTime": "09-Nov-2026 15:30:00"},
-         "priceInfo": {"lastPrice": 231.76, "iNavValue": 114.38},
-         "marketDeptOrderBook": {"totalBuyQuantity": 1000, "totalSellQuantity": 5000,
-                                 "bid": [{"price": 229.0, "quantity": 100}, ...],
-                                 "ask": [{"price": 230.0, "quantity": 500}, ...]}}
+    Returns (main, companion, symbol_hint). A main file without companion is fine (the
+    order book request failed that tick). An order-book file without a price block (that
+    request failed) comes back as (book file, None, symbol taken from the file name) and
+    is read as a book-only row.
     """
+    mains: dict[tuple[date, str, str], RawFile] = {}
+    books: dict[tuple[date, str, str], RawFile] = {}
+    others: list[RawFile] = []
+    for rf in files:
+        m = _QUOTE_FILE.fullmatch(rf.base_name)
+        if m is None:
+            others.append(rf)  # unusual name: read alone; _fetch_time explains if unusable
+            continue
+        key = (rf.day, m["prefix"], m["hms"])
+        (books if m["kind"] else mains)[key] = rf
+    pairs: list[tuple[RawFile, RawFile | None, str | None]] = [(rf, None, None) for rf in others]
+    pairs += [(rf, books.pop(key, None), None) for key, rf in mains.items()]
+    pairs += [(rf, None, key[1]) for key, rf in books.items()]  # books with no price block
+    return sorted(pairs, key=lambda p: p[0].relpath)
+
+
+def _load_quote(content: bytes, rf: RawFile) -> dict[str, Any]:
     try:
         body = json.loads(content)
     except ValueError as exc:
         raise CleanError(
             f"{TABLE}: {rf.relpath} is not JSON (starts with {content[:30]!r})"
         ) from exc
-    info = body.get("info") if isinstance(body, dict) else None
-    book = body.get("marketDeptOrderBook") if isinstance(body, dict) else None
+    if not isinstance(body, dict):
+        raise CleanError(f"{TABLE}: {rf.relpath} is not a JSON object; has {type(body).__name__}")
+    return body
+
+
+def parse_nse_quote(
+    content: bytes,
+    rf: RawFile,
+    companion: tuple[bytes, RawFile] | None = None,
+    symbol_hint: str | None = None,
+) -> dict[str, Any]:
+    """Read one saved NSE quote (JSON). Returns the fields of one inav_snapshots row.
+
+    Expected shape (UNVERIFIED against a live capture)::
+
+        price block   {"info": {"symbol": "MONQ50"},
+                       "metadata": {"lastUpdateTime": "09-Nov-2026 15:30:00"},
+                       "priceInfo": {"lastPrice": 231.76, "iNavValue": 114.38}}
+        order book    {"marketDeptOrderBook": {"totalBuyQuantity": 1000,
+                         "totalSellQuantity": 5000,
+                         "bid": [{"price": 229.0, "quantity": 100}, ...],
+                         "ask": [{"price": 230.0, "quantity": 500}, ...]}}
+
+    The order book is either inside the same file (older hand-made samples) or in
+    ``companion`` (what the collector saves). ``symbol_hint`` (the symbol in the file
+    name) is only used when the file has no ``info`` of its own, i.e. an order book whose
+    price block was never saved. A price block without any order book
+    gives a row with empty depth columns (never zeros). A file with neither a price
+    block nor an order book is an error: the format may have changed.
+    """
+    body = _load_quote(content, rf)
+    book_body, book_rf = body, rf
+    if companion is not None:
+        book_body, book_rf = _load_quote(companion[0], companion[1]), companion[1]
+    book = book_body.get("marketDeptOrderBook")
+    price_info = body.get("priceInfo") if isinstance(body.get("priceInfo"), dict) else None
+    info = body.get("info")
     symbol = info.get("symbol") if isinstance(info, dict) else None
-    if not isinstance(symbol, str) or not symbol or not isinstance(book, dict):
+    if symbol is None and symbol_hint:
+        symbol = symbol_hint
+    if not isinstance(symbol, str) or not symbol or (book is None and price_info is None):
         raise CleanError(
-            f'{TABLE}: {rf.relpath} lacks info.symbol or "marketDeptOrderBook"; '
-            f"has keys {sorted(body) if isinstance(body, dict) else type(body).__name__}. "
-            "Has the NSE quote format changed?"
+            f'{TABLE}: {rf.relpath} lacks info.symbol or both "priceInfo" and '
+            f'"marketDeptOrderBook"; has keys {sorted(body)}. Has the NSE quote format changed?'
         )
-    price_info = body.get("priceInfo") if isinstance(body.get("priceInfo"), dict) else {}
+    if book is not None and not isinstance(book, dict):
+        raise CleanError(f'{TABLE}: {book_rf.relpath}: "marketDeptOrderBook" is not an object')
+    price_info = price_info or {}
     inav = next((price_info[k] for k in _INAV_KEYS if k in price_info), None)
 
+    row: dict[str, Any] = {
+        "symbol": symbol.strip(),
+        "last_price": _number(price_info.get("lastPrice")),
+        "inav": _number(inav),
+        "bid": math.nan,
+        "ask": math.nan,
+        "bid_qty": None,
+        "ask_qty": None,
+        "total_buy_qty": None,
+        "total_sell_qty": None,
+        "depth_json": None,
+        "data_ts": _quote_time(body.get("metadata")),
+        "market_status": None,
+    }
+    if book is not None:
+        row.update(_book_fields(book, book_rf))
+    return row
+
+
+def _book_fields(book: dict[str, Any], rf: RawFile) -> dict[str, Any]:
     bids = _levels(book, "bid", rf)
     asks = _levels(book, "ask", rf)
     depth = {"bid": [[p, q] for p, q in bids], "ask": [[p, q] for p, q in asks]}
     return {
-        "symbol": symbol.strip(),
-        "last_price": _number(price_info.get("lastPrice")),
-        "inav": _number(inav),
         "bid": bids[0][0] if bids else math.nan,
         "ask": asks[0][0] if asks else math.nan,
         "bid_qty": bids[0][1] if bids else None,
@@ -246,8 +320,6 @@ def parse_nse_quote(content: bytes, rf: RawFile) -> dict[str, Any]:
         "total_buy_qty": _whole(book.get("totalBuyQuantity")),
         "total_sell_qty": _whole(book.get("totalSellQuantity")),
         "depth_json": json.dumps(depth, separators=(",", ":")),
-        "data_ts": _quote_time(body.get("metadata")),
-        "market_status": None,
     }
 
 
@@ -260,12 +332,20 @@ def _quote_time(metadata: Any) -> datetime | None:
     return datetime.combine(day, time(*(int(match.group(i)) for i in (4, 5, 6))), tzinfo=IST)
 
 
-def _nse_quote(rf: RawFile, ts: datetime, symbols: set[str]) -> pd.DataFrame:
-    row = parse_file(TABLE, rf, lambda b: parse_nse_quote(b, rf))
+def _nse_quote(
+    rf: RawFile,
+    ts: datetime,
+    symbols: set[str],
+    companion: RawFile | None = None,
+    symbol_hint: str | None = None,
+) -> pd.DataFrame:
+    pair = (companion.path.read_bytes(), companion) if companion is not None else None
+    row = parse_file(TABLE, rf, lambda b: parse_nse_quote(b, rf, pair, symbol_hint))
+    source_file = rf.relpath if companion is None else f"{rf.relpath};{companion.relpath}"
     if row["symbol"] not in symbols:
-        return _frame(ts, "nse_quote", rf.relpath, [])
+        return _frame(ts, "nse_quote", source_file, [])
     given = {k: [v] for k, v in row.items() if k != "symbol"}
-    return _frame(ts, "nse_quote", rf.relpath, [row["symbol"]], **given)
+    return _frame(ts, "nse_quote", source_file, [row["symbol"]], **given)
 
 
 # -- duplicates -----------------------------------------------------------------

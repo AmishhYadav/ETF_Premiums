@@ -49,7 +49,7 @@ from etfp.timeutil import IST, now_ist
 
 logger = logging.getLogger("etfp.export")
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 SCHEMA_CHANGELOG: list[dict[str, str]] = [
     {
         "version": "1.0.0",
@@ -85,6 +85,30 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "slb_eligible.parquet and slb_daily.parquet (R8): NSE securities-lending "
             "eligibility and daily lending trades. bse_prices.parquet (R9): the BSE rows "
             "behind the bse_* columns."
+        ),
+    },
+    {
+        "version": "1.3.0",
+        "date": "2026-11-14",
+        "changes": (
+            "MEANING CHANGE: x_april is now ln(close / (1.2 x nav_known_at_close)) (the "
+            "BLUEPRINT definition; the April 2027 band is anchored on NAV). In 1.0.0-1.2.0 it "
+            "was ln(close / (1.2 x fv)); that version is now x_april_fv. The column "
+            "x_april_nav_known is removed (it is the new x_april). "
+            "New etf_day column attention (R15): Google Trends search interest for the ETF's "
+            "configured terms on the same calendar day, empty unless every configured term has "
+            "a value (config/trends_terms.yaml). "
+            "New files: feeder_nav_daily.parquet (R14): daily AMFI NAV of each feeder fund "
+            "(Regular and Direct plan are separate schemes). china_etf_daily.parquet (R17): "
+            "close, NAV, shares outstanding and premium of China-listed QDII ETFs, from "
+            "Bloomberg (licensed: not for the open dataset). inav_snapshots.parquet rows from "
+            "the NSE quote capture (source nse_quote) join the price block and the order book "
+            "of one page visit into one row; their source_file lists both raw files "
+            "separated by ';'. MEANING CHANGE: nav_known_at_close is now empty when the "
+            "freshest known NAV is more than 7 calendar days old (a hole in the NAV history, "
+            "not a publication lag); nav_known_date and nav_publication_lag_days still show "
+            "it and dq_nav_stale flags it. Premiums, fv and x_april are then empty "
+            "(fv_method no_nav) instead of being computed from an old NAV."
         ),
     },
 ]
@@ -413,16 +437,19 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
     ),
     "x_april": _c(
         "float",
-        "Excess over the planned April-2027 cap, on fair value.",
-        "log points",
-        "ln(close / (1.2 x fv))",
-        "derived",
-    ),
-    "x_april_nav_known": _c(
-        "float",
-        "Same on the known NAV (the BLUEPRINT definition).",
+        "Excess over the planned April-2027 cap, on the known NAV. From 1 April 2027 the band is "
+        "anchored on NAV, so the cap is 1.2 x NAV; this is how far the price sits above it "
+        "(positive = price would be above the new cap). MEANING CHANGE in 1.3.0 (was on fv).",
         "log points",
         "ln(close / (1.2 x nav_known_at_close))",
+        "derived",
+    ),
+    "x_april_fv": _c(
+        "float",
+        "Same excess, but measured against the fair value instead of the known NAV (this was "
+        "the meaning of x_april before 1.3.0).",
+        "log points",
+        "ln(close / (1.2 x fv))",
         "derived",
     ),
     # ---- band regime and computed band -------------------------------------------------------
@@ -826,6 +853,14 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
         "derived",
     ),
     "ret_fv_1": _c("float", "One-row log return of fv.", "log points", "", "derived"),
+    # ---- attention (R15) --------------------------------------------------------------------------------
+    "attention": _c(
+        "float",
+        "Google Trends search interest in India for this ETF's configured terms on the same calendar day (0-100 scale; each term is scaled to its own maximum). Empty when any configured term has no number that day, and for ETFs with no term configured. Includes searches after the 15:30 close, so it is not known at the close.",
+        "index 0-100",
+        "mean of the ETF's terms (config/trends_terms.yaml), only when every term has a value",
+        "trends_daily (Google Trends, pulled by hand)",
+    ),
     # ---- data-quality flags (SPEC 12). True = a human should look; never dropped. ----------------------
     "dq_duplicate_row": _c(
         "bool", "Another row has the same symbol and date.", source="features/quality.py"
@@ -934,6 +969,8 @@ COPIED_TABLES = (
     "slb_eligible",
     "slb_daily",
     "bse_prices",
+    "feeder_nav_daily",
+    "china_etf_daily",
 )
 """Clean tables copied as they are (their parquet files already have the registered types)."""
 MARKET_HOURS = (time(9, 10), time(15, 35))

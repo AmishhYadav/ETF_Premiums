@@ -54,7 +54,7 @@ MEASURES: dict[str, str] = {
     "prem_nav_known": "Premium over the latest known NAV",
     "prem_raw": "Premium over the same-day NAV (what the press quotes)",
     "prem_band_ref": "Premium over the T-2 NAV (the pre-Sep-2026 band anchor)",
-    "x_april": "Excess over the April 2027 cap (log; above 0 = price is above 1.2 x fair value)",
+    "x_april": "Excess over the April 2027 cap (log; above 0 = price is above 1.2 x known NAV)",
 }
 LOG_MEASURES = frozenset({"x_april"})
 """Measures that are natural-log numbers, not fractions: shown as they are, not as percent."""

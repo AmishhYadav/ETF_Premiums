@@ -98,6 +98,40 @@ Pull them with `=BDIB("MONQ50 IN Equity", "TRADE", start, end, "BarSize=1")` (or
 tools) for the sessions of interest only (days a limit was touched, at least Sep-Oct 2026); the
 volume of rows is large. Read them back with `bloomberg.etf_minute_bars(frame, "MONQ50")`.
 
+## China-listed ETFs (request R17)
+
+China has the same cap problem as India: ETFs that hold US shares are limited by the overseas
+"QDII" quota. Their price, NAV and size, from Jan 2024, are an outside comparison for the Indian
+premiums. They go into the clean table `china_etf_daily` (`src/etfp/clean/china_etf.py`). Same long
+format, no new columns. The convention:
+
+| Column | Rule for China ETF rows |
+|---|---|
+| `instrument` | the 6-digit exchange code, one space, `CH`: `513100 CH` (Bloomberg's own ticker is `513100 CH Equity`). Candidate codes from R17 to confirm on the terminal: 513100, 159941, 513300, 159509 (Nasdaq), 513500, 159612 (S&P 500) |
+| `field` | `PX_LAST` (close, yuan), `FUND_NET_ASSET_VAL` (NAV per unit, yuan), `EQY_SH_OUT` (units outstanding). A day may have any of the three |
+| `timezone` | `Asia/Shanghai` (allowed since this request) |
+| `time` | `15:00` (the Chinese close). If you export only a daily value, still use `15:00` |
+| `date` | the Chinese trading day |
+| `value` | plain number, greater than zero. **`EQY_SH_OUT`: paste exactly what Bloomberg returns.** The importer does not rescale it. VERIFY the unit on the terminal (Bloomberg normally quotes millions of shares) and say it in `note` |
+
+`premium` in the table is `close / nav - 1` on the same date. VERIFY: for ETFs that hold US shares,
+the NAV dated T probably reflects the US close of T-1, so this premium is not lined up for that
+one-day lag the way the Indian `prem_nav_known` is. If several rows exist for the same ETF, field
+and day, the last one of the day is used. Other instruments in the same file are ignored by this
+table. Example (made-up numbers):
+
+```
+date,time,timezone,instrument,field,value,note
+2026-11-09,15:00,Asia/Shanghai,513100 CH,PX_LAST,1.200,
+2026-11-09,15:00,Asia/Shanghai,513100 CH,FUND_NET_ASSET_VAL,1.000,
+2026-11-09,15:00,Asia/Shanghai,513100 CH,EQY_SH_OUT,5000,millions of units (VERIFY)
+```
+
+Chinese ETFs have a 10% limit on the previous close and issuers can halt trading; a halted day has
+no `PX_LAST` row, which stays empty in the table (never zero). **Licence:** the table is Bloomberg
+data. It is in the research export (git-ignored) but must never go into the public open dataset.
+The synthetic test files are in `tests/fixtures/bloomberg_china/`.
+
 ## How to build the file in Excel
 
 1. In a sheet use `=BDH(...)` (daily) or the intraday tools (`=BDIB`/`=BDH` with `BarSize`) to pull

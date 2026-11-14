@@ -51,7 +51,13 @@ SOURCE = "bloomberg"
 
 REQUIRED_COLUMNS: tuple[str, ...] = ("date", "time", "timezone", "instrument", "field", "value")
 OPTIONAL_COLUMNS: tuple[str, ...] = ("note",)
-ALLOWED_TIMEZONES: tuple[str, ...] = ("Asia/Kolkata", "America/New_York", "Asia/Hong_Kong", "UTC")
+ALLOWED_TIMEZONES: tuple[str, ...] = (
+    "Asia/Kolkata",
+    "America/New_York",
+    "Asia/Hong_Kong",
+    "Asia/Shanghai",  # China-listed ETFs (R17)
+    "UTC",
+)
 
 OUTPUT_COLUMNS: tuple[str, ...] = (
     "date",

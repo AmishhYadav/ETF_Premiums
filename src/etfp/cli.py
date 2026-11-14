@@ -199,6 +199,52 @@ def _inav_loop(
     typer.echo(f"recorder finished: {len(results)} ticks run")
 
 
+@collect_app.command("nse-quote")
+def collect_nse_quote(
+    symbol: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--symbol", "-s", help="ETF symbol (repeat for several). Default: all tracked."
+        ),
+    ] = None,
+    headed: Annotated[
+        bool, typer.Option("--headed", help="Show the browser window (to see what NSE does).")
+    ] = False,
+    channel: Annotated[
+        str | None, typer.Option("--channel", help='Browser channel, e.g. "chromium".')
+    ] = None,
+) -> None:
+    """Take ONE NSE quote capture (price block + order book) through a real browser.
+
+    Writes under data/raw/nse_quote/ exactly like the recorder does (it is real data,
+    never overwritten). Use --headed to watch the browser, --channel chromium to try
+    the full browser in its new headless mode.
+    """
+    from etfp.collect import nse_quote
+    from etfp.config import load_etfs
+
+    _configure_logging()
+    cfg = load_collect_settings().nse_quote.model_copy(
+        update={
+            "headless": not headed,
+            **({"channel": channel} if channel else {}),
+        }
+    )
+    symbols = symbol or [e.symbol for e in load_etfs().tracked()]
+    store = RawStore(paths.raw_dir())
+    try:
+        report = nse_quote.capture_symbols(store, symbols, cfg)
+    except nse_quote.BrowserUnavailableError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    for record in report.saved:
+        typer.echo(f"OK {record.relpath} {record.size_bytes}")
+    for problem in report.problems:
+        typer.echo(f"PROBLEM {problem}", err=True)
+    if not report.saved:
+        raise typer.Exit(1)
+
+
 @collect_app.command("daily")
 def collect_daily(
     day_text: Annotated[

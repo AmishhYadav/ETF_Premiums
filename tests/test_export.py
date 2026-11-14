@@ -30,7 +30,7 @@ from test_clean_helpers import make_raw_root
 NOW = datetime(2026, 11, 13, 22, 0, tzinfo=IST)
 EXPECTED_FILES = {
     "etf_day.parquet", "inav_snapshots.parquet", "units_monthly.parquet", "units_daily.parquet",
-    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet",
+    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet", "feeder_nav_daily.parquet", "china_etf_daily.parquet",
     "schema.json", "DATA_DICTIONARY.md", "manifest.json",
 }  # fmt: skip
 
@@ -96,8 +96,7 @@ def test_every_blueprint_measure_is_exported_or_a_known_gap() -> None:
             first = line.split("|")[1]
             wanted |= set(re.findall(r"`([a-z_0-9]+)`", first))
     missing = wanted - set(ETF_DAY_COLUMNS)
-    # `attention` is Google Trends (R15): it lives in trends_daily by term, not in etf_day.
-    assert missing == {"attention"}
+    assert missing == set()  # `attention` (R15, Google Trends) joined etf_day in schema 1.3.0
 
 
 def test_folder_has_every_file(exported) -> None:
@@ -131,8 +130,8 @@ def test_etf_day_parquet_round_trips_with_typed_columns(exported, built) -> None
 def test_schema_json_documents_every_exported_column(exported) -> None:
     folder, *_ = exported
     schema = json.loads((folder / "schema.json").read_text())
-    assert schema["schema_version"] == SCHEMA_VERSION == "1.2.0"
-    assert [c["version"] for c in schema["changelog"]] == ["1.0.0", "1.1.0", "1.2.0"]
+    assert schema["schema_version"] == SCHEMA_VERSION == "1.3.0"
+    assert [c["version"] for c in schema["changelog"]] == ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]
     assert "MEANING CHANGE" in schema["changelog"][1]["changes"]  # 1.1.0 turnover
     for name in (p.stem for p in folder.glob("*.parquet")):
         cols = pq.read_table(folder / f"{name}.parquet").column_names
@@ -147,7 +146,7 @@ def test_schema_json_documents_every_exported_column(exported) -> None:
 def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
     folder, *_ = exported
     text = (folder / "DATA_DICTIONARY.md").read_text()
-    assert "Schema version **1.2.0**" in text
+    assert "Schema version **1.3.0**" in text
     assert "## etf_day" in text and "| cap_pi |" in text and "| prem_nav_known |" in text
     assert text.count("\n| ") > len(ETF_DAY_COLUMNS)
 
@@ -155,7 +154,7 @@ def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
 def test_manifest_contents(exported) -> None:
     folder, _, _, _ = exported
     m = json.loads((folder / "manifest.json").read_text())
-    assert m["schema_version"] == "1.2.0"
+    assert m["schema_version"] == "1.3.0"
     assert m["build_time_ist"] == "2026-11-13T22:00:00+05:30"
     assert m["git"] == {"commit": "uncommitted", "dirty": True}  # the temp folder is no repo
     assert m["date_range"]["etf_day"] == {"first": "2021-01-04", "last": "2026-11-09"}
@@ -170,7 +169,7 @@ def test_manifest_contents(exported) -> None:
     assert "close" not in nulls["null_counts"]  # complete columns are not listed
     assert m["dq_flag_counts"]["all"]["dq_nav_stale"] >= 1
     assert "MONQ50" in m["dq_flag_counts"]["by_symbol"]
-    assert m["fv_method_counts"]["MONQ50"] == {"nav_only": 1}
+    assert m["fv_method_counts"]["MONQ50"] == {"no_nav": 1}  # its only NAV is 60 days old (D31)
     assert m["creation_unit_sizes_missing"] and "MASPTOP50" in m["creation_unit_sizes_missing"]
     assert m["recorder_gaps"]["rows_by_source"]["nse_etf_api"] == 11
     assert m["missing_nse_sessions_by_symbol"]["NIFTYBEES"]["count"] > 1000  # sparse fixtures
@@ -328,3 +327,20 @@ def test_manifest_reports_limit_day_coverage(exported) -> None:
     ld = m["limit_day"]
     assert ld is not None and ld["rows"] == sum(ld["by_obs_source"].values())
     assert isinstance(ld["days_without_intraday"], list)
+
+
+def test_1_3_0_changelog_and_new_columns_and_tables(exported) -> None:
+    folder, *_ = exported
+    schema = json.loads((folder / "schema.json").read_text())
+    entry = schema["changelog"][-1]
+    assert entry["version"] == "1.3.0"
+    assert (
+        "MEANING CHANGE: x_april is now ln(close / (1.2 x nav_known_at_close))" in entry["changes"]
+    )
+    assert "x_april_fv" in entry["changes"] and "x_april_nav_known is removed" in entry["changes"]
+    cols = {c["name"]: c for c in schema["tables"]["etf_day"]["columns"]}
+    assert "x_april_nav_known" not in cols
+    assert cols["x_april"]["formula"] == "ln(close / (1.2 x nav_known_at_close))"
+    assert cols["x_april_fv"]["formula"] == "ln(close / (1.2 x fv))"
+    assert "attention" in cols and cols["attention"]["type"] == "float"
+    assert {"feeder_nav_daily", "china_etf_daily"} <= set(schema["tables"])

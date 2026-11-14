@@ -562,3 +562,23 @@ def test_widening_rule_has_no_breadth_test():
         assert (equity.cooling_off_minutes, equity.cooling_off_minutes_last_30) == (15, 5)
     gold = rules.regime_for(date(2026, 11, 9)).band_spec("gold")
     assert gold.breadth_test is None  # not recorded for gold/silver
+
+
+def test_quote_capture_settings_default_off_the_shelf(tmp_path: Path):
+    # An older collect.yaml without the nse_quote block must still load, with safe defaults.
+    path = write(tmp_path, collect_yaml())
+    cfg = load_collect_settings(path).nse_quote
+    assert cfg.enabled == "auto" and cfg.headless is True
+    assert cfg.page_gap_s == 1.5 and cfg.channel is None
+
+
+def test_quote_capture_page_gap_below_project_minimum_fails(tmp_path: Path):
+    path = write(tmp_path, collect_yaml() + "\nnse_quote:\n  page_gap_s: 1.0\n")
+    with pytest.raises(Exception, match="page_gap_s"):
+        load_collect_settings(path)
+
+
+def test_quote_capture_unknown_key_fails(tmp_path: Path):
+    path = write(tmp_path, collect_yaml() + "\nnse_quote:\n  enabeld: false\n")
+    with pytest.raises(Exception, match="enabeld"):
+        load_collect_settings(path)

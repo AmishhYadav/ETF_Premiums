@@ -1,0 +1,10 @@
+date,time,timezone,instrument,field,value,note
+2026-11-09,15:00,Asia/Shanghai,513100 CH,PX_LAST,1.200,synthetic
+2026-11-09,15:00,Asia/Shanghai,513100 CH,FUND_NET_ASSET_VAL,1.000,synthetic
+2026-11-09,15:00,Asia/Shanghai,513100 CH,EQY_SH_OUT,5000,synthetic (millions)
+2026-11-10,15:00,Asia/Shanghai,513100 CH,PX_LAST,1.150,synthetic
+2026-11-10,15:00,Asia/Shanghai,513100 CH,FUND_NET_ASSET_VAL,1.250,synthetic
+2026-11-10,15:00,Asia/Shanghai,513100 CH,EQY_SH_OUT,5010,synthetic
+2026-11-10,15:00,Asia/Shanghai,159941 CH,PX_LAST,2.000,synthetic
+2026-11-10,15:00,Asia/Shanghai,159941 CH,EQY_SH_OUT,800,synthetic
+2026-11-09,15:00,Asia/Shanghai,NQ1,PX_LAST,20000,not a China ETF: must be ignored
