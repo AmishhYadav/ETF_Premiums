@@ -63,13 +63,13 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R8 — Securities lending data
 - Asked: 2026-11-10
 - Need: Collect NSE's SLB eligible-securities list (latest and history) and SLB trade data for the six international ETFs. The paper must show, not assume, whether these units could be borrowed and shorted.
-- Status: open
+- Status: partly done (3f3a92f, 2026-11-14): collectors and tables `slb_eligible`, `slb_daily`, exported. Finding: the five international ETFs were not SLB-eligible on 2021-01-04 but were on 2024-01-02 and 2026-11-12; lending trades look rare (D27). Full history needs a backfill run
 - Notes: MON100 was admitted to SLB in Sep 2013; current status unknown.
 
 ### R9 — BSE daily prices and volumes
 - Asked: 2026-11-11
 - Need: Daily BSE close, units traded, value and trades for every tracked ETF, stored beside the NSE figures. Add `turnover` = (NSE units + BSE units) / `units_outstanding`. Without BSE the turnover of these ETFs is understated, and a rupee turnover mixes in the premium.
-- Status: partly done (298d62a, 2026-11-14): `turnover` = units traded / `units` with NSE volume; BSE columns exist and are empty until a BSE collector is built
+- Status: done (3f3a92f, 2026-11-14): `bse_prices` (matched by ISIN), `bse_*` columns, `turnover` = (NSE + BSE units) / units; schema_version 1.1.0 (turnover meaning changed). BSE history needs a backfill run
 - Notes: Needed for paper A. Keep NSE-only columns unchanged; new columns only. schema_version bump.
 
 ### R10 — Ceiling on the premium, limit flags and inferred regime
@@ -93,7 +93,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R13 — Limit-day diagnostics from intraday data
 - Asked: 2026-11-11
 - Need: Per ETF-day where a limit was touched: time of first touch, minutes spent at the limit, number of band widenings, and total sell quantity (upper limit) or buy quantity (lower limit) in the book at the limit, from the iNAV/depth snapshots and from Bloomberg minute bars where imported. Flag `locked_up` / `locked_down` when the opposite side of the book is empty at the limit.
-- Status: open
+- Status: done (3f3a92f, 2026-11-14): `limit_day` table (first touch, minutes at limit, widenings, book quantity, locked_up/down, obs_source), exported in schema 1.2.0; manifest lists which days have minute bars. Sep–Oct 2026 needs a Bloomberg minute-bar export (D28)
 - Notes: Separates a touched limit from a locked one. For Sep-Oct 2026 this depends on the Bloomberg minute-bar import; say in the manifest which days have it.
 
 ### R14 — Feeder holdings and net float
