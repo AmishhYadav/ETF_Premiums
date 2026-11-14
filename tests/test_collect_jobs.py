@@ -126,7 +126,7 @@ def test_amfi_windows_single_day_and_bad_size():
 # -- plan_daily -----------------------------------------------------------------------
 
 
-def test_plan_daily_on_the_day_itself_lists_all_ten_files():
+def test_plan_daily_on_the_day_itself_lists_all_thirteen_files():
     plan = jobs.plan_daily(DAY, jobs.DAILY_SOURCES, now=NOW)
     names = [(u.source, u.name) for u in plan.units]
     assert names == [
@@ -141,6 +141,9 @@ def test_plan_daily_on_the_day_itself_lists_all_ten_files():
         ("yahoo_intraday", "ES_F_5m.json"),
         ("yahoo_intraday", "USDINR_X_5m.json"),
         ("yahoo_intraday", "HKDINR_X_5m.json"),
+        ("bse_bhavcopy", "BhavCopy_BSE_CM_0_0_0_20261109_F_0000.CSV"),
+        ("nse_slb_eligible", "SLB_ELG_SEC_09112026.csv"),
+        ("nse_slb_bhavcopy", "SLBM_BC_09112026.DAT"),
     ]
     assert plan.notes == []
     assert all(u.day == DAY for u in plan.units)
@@ -237,9 +240,9 @@ def test_second_run_makes_zero_requests(tmp_path: Path, server: Server):
         first = jobs.run_units(plan.units, client, store)
         n = len(server.requests)
         second = jobs.run_units(plan.units, client, store)
-    assert jobs.summarize(first) == {"fetched": 10, "exists": 0, "unavailable": 0, "failed": 0}
-    assert jobs.summarize(second) == {"fetched": 0, "exists": 10, "unavailable": 0, "failed": 0}
-    assert len(server.requests) == n == 10
+    assert jobs.summarize(first) == {"fetched": 13, "exists": 0, "unavailable": 0, "failed": 0}
+    assert jobs.summarize(second) == {"fetched": 0, "exists": 13, "unavailable": 0, "failed": 0}
+    assert len(server.requests) == n == 13
 
 
 def test_force_refetches_but_identical_bytes_are_not_stored_twice(tmp_path: Path, server: Server):

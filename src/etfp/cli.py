@@ -29,12 +29,14 @@ app = typer.Typer(
 collect_app = typer.Typer(help="Download raw data (saved untouched under data/raw/).")
 ops_app = typer.Typer(help="Scheduling and operations helpers.")
 export_app = typer.Typer(help="Write exports that other tools read (research handoff).")
+run_app = typer.Typer(help="Scheduled pipeline runs (what launchd starts).", no_args_is_help=True)
 app.add_typer(collect_app, name="collect")
 app.add_typer(ops_app, name="ops")
 app.add_typer(export_app, name="export")
+app.add_typer(run_app, name="run")
 
 EXIT_USAGE = 2
-EXIT_LOCKED = 3
+EXIT_LOCKED = 3  # another recorder / another `run daily` holds the lock
 _LOG_MAX_BYTES = 5 * 1024 * 1024
 _LOG_BACKUPS = 5
 _HANDLER_MARK = "_etfp_cli_handler"
@@ -418,15 +420,223 @@ def alerts(
     typer.echo(f"{len(new)} alert(s) {'would be sent' if dry_run else 'sent'}")
 
 
+# -- run daily ----------------------------------------------------------------------
+#
+# One command for the scheduler: collect -> build -> export -> alerts. The order, the lock
+# and the run record live in etfp.ops.run_daily; the functions below are the real jobs it
+# calls (tests replace them with fakes).
+
+# Snapshots that only exist as "today's latest file". The morning run works on the previous
+# session, so fetching them then would store the morning's file under the wrong day.
+_EVENING_ONLY_SOURCES = (jobs.ETF_LIST, jobs.NAVALL)
+
+
+def _collect_step(day: date, phase: ops.Phase) -> ops.StepReport:
+    """Download the day's raw files. A failed source is reported; the others still run.
+
+    Evening: every source `jobs.plan_daily` supports, for `day`. Files already stored are
+    skipped, so a re-run is cheap and safe.
+
+    Morning (finishing the previous session, `day`):
+      1. every source except the evening-only snapshots, WITHOUT force: this only fills
+         holes (for example an NSE file that was not yet posted at 19:45), because stored
+         files are skipped;
+      2. the AMFI history window WITH force: overseas NAVs for `day` are published the next
+         morning, so the window saved last evening is incomplete. The raw store keeps both
+         versions (the new bytes go beside the old as ".v2"); cleaning uses the newest.
+    """
+    now = now_ist()
+    if phase == "evening":
+        passes = [(list(jobs.DAILY_SOURCES), False)]
+    else:
+        held_back = (*_EVENING_ONLY_SOURCES, jobs.AMFI_HISTORY)
+        others = [s for s in jobs.DAILY_SOURCES if s not in held_back]
+        passes = [(others, False), ([jobs.AMFI_HISTORY], True)]
+    settings = load_collect_settings()
+    store = RawStore(paths.raw_dir())
+    outcomes: list[jobs.Outcome] = []
+    with _build_bulk_client(settings) as client:
+        for sources, force in passes:
+            plan = jobs.plan_daily(day, sources, now=now)
+            for note in plan.notes:
+                typer.echo(f"NOTE        {note}")
+            outcomes += jobs.run_units(
+                plan.units,
+                client,
+                store,
+                force=force,
+                on_outcome=lambda o: _print_outcome(o, quiet_skips=False),
+            )
+    counts = jobs.summarize(outcomes)
+    detail = (
+        f"{counts['fetched']} fetched, {counts['exists']} already stored, "
+        f"{counts['unavailable']} not available, {counts['failed']} FAILED"
+    )
+    failed = [
+        {
+            "source": o.unit.source,
+            "day": o.unit.day.isoformat(),
+            "name": o.unit.name,
+            "detail": o.detail,
+        }
+        for o in outcomes
+        if o.status == "failed"
+    ]
+    if failed:
+        names = ", ".join(sorted({f["source"] for f in failed}))
+        return ops.StepReport("failed", f"{detail} (failed: {names})", {"failed": failed})
+    return ops.StepReport("ok", detail, {"counts": counts})
+
+
+def _build_step() -> ops.StepReport:
+    """Raw -> clean tables -> etf_day. A bad raw file (CleanError) fails the step."""
+    from etfp.build import build_all
+    from etfp.clean.common import CleanError
+
+    try:
+        result = build_all()
+    except CleanError as exc:
+        return ops.StepReport("failed", f"CleanError: {exc}")
+    for table, rows in sorted(result["clean"].items()):
+        typer.echo(f"clean  {table:<16} {rows:>9} rows")
+    typer.echo(f"etf_day                 {result['etf_day']:>9} rows")
+    return ops.StepReport(
+        "ok", f"etf_day {result['etf_day']} rows, {len(result['clean'])} clean tables"
+    )
+
+
+def _export_step() -> ops.StepReport:
+    from etfp.export import export_research
+    from etfp.store import Store
+
+    folder = export_research(Store())
+    return ops.StepReport("ok", f"research export: {folder}")
+
+
+def _alerts_step() -> ops.StepReport:
+    """Send new alerts. No Telegram credentials is a warning, not a failure.
+
+    Without credentials nothing can be sent, so we also print what WOULD have been sent
+    (a dry run never sends and never touches the sent-file) so the log still shows it.
+    """
+    from etfp.alerts import (
+        AlertDeliveryError,
+        AlertsAlreadyRunningError,
+        MissingCredentialsError,
+        run_alerts,
+    )
+    from etfp.store import Store
+
+    try:
+        new = run_alerts(Store(), dry_run=False)
+    except MissingCredentialsError as exc:
+        message = f"alerts NOT sent, Telegram credentials missing: {exc}"
+        try:
+            would = run_alerts(Store(), dry_run=True)
+            message += f" ({len(would)} alert(s) would have been sent)"
+        except Exception as dry_exc:  # the preview is a courtesy; never let it fail the run
+            message += f" (preview also failed: {type(dry_exc).__name__}: {dry_exc})"
+        return ops.StepReport("warning", message)
+    except (AlertDeliveryError, AlertsAlreadyRunningError) as exc:
+        return ops.StepReport("failed", f"{type(exc).__name__}: {exc}")
+    return ops.StepReport("ok", f"{len(new)} alert(s) sent")
+
+
+def _real_steps() -> ops.DailySteps:
+    return ops.DailySteps(
+        collect=_collect_step, build=_build_step, export=_export_step, alerts=_alerts_step
+    )
+
+
+@run_app.command("daily")
+def run_daily_cmd(
+    day_text: Annotated[
+        str | None,
+        typer.Option(
+            "--date",
+            help="Trading day to process, YYYY-MM-DD. Evening default: today. Morning default: "
+            "the last NSE session before today (its overseas NAVs appear this morning).",
+        ),
+    ] = None,
+    phase: Annotated[
+        str | None,
+        typer.Option(
+            "--phase",
+            help="evening = collect all sources, build, export, alert. morning = fill gaps, "
+            "re-fetch the AMFI NAV window, build, export, alert. Default: evening from 18:00 "
+            "India time, otherwise morning.",
+        ),
+    ] = None,
+    no_alerts: Annotated[
+        bool, typer.Option("--no-alerts", help="Skip the alerts step (nothing is sent).")
+    ] = False,
+) -> None:
+    """The scheduled run: collect, build, export, alerts. Exit 0 only if every step worked.
+
+    A failed download does not stop the build, and a failed build does not stop the alerts
+    (the stale-data alert should fire). Missing Telegram credentials is a warning only.
+    Exit codes: 0 ok (or nothing to do: NSE closed), 1 a step failed, 2 bad option,
+    3 another run is in progress.
+    """
+    now = now_ist()
+    chosen = phase if phase is not None else ops.default_phase(now)
+    if chosen not in ops.PHASES:
+        typer.echo(
+            f"error: --phase must be one of {', '.join(ops.PHASES)}, got {chosen!r}", err=True
+        )
+        raise typer.Exit(EXIT_USAGE)
+    requested = _parse_day(day_text, "--date") if day_text else None
+    try:
+        day, closed_message = ops.resolve_run_day(chosen, requested, now)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from None
+    if closed_message:
+        typer.echo(closed_message)
+        return
+    _configure_logging()
+    typer.echo(f"run daily: {chosen} phase for trading day {day.isoformat()}")
+    try:
+        result = ops.run_daily(
+            day=day,
+            phase=chosen,
+            steps=_real_steps(),
+            state_dir=paths.state_dir(),
+            no_alerts=no_alerts,
+            clock=now_ist,
+            out=typer.echo,
+            err=lambda text: typer.echo(text, err=True),
+        )
+    except ops.RunLockedError as exc:
+        typer.echo(f"error: {exc}. Nothing was run.", err=True)
+        raise typer.Exit(EXIT_LOCKED) from None
+    if result.exit_code:
+        raise typer.Exit(result.exit_code)
+
+
 @ops_app.command("launchd-plist")
-def launchd_plist() -> None:
-    """Print the macOS launchd job that starts the recorder (installs nothing)."""
+def launchd_plist(
+    job: Annotated[
+        str,
+        typer.Option(
+            "--job",
+            help=f"Which job to print: {', '.join(ops.JOBS)}. Default: inav (the recorder).",
+        ),
+    ] = "inav",
+) -> None:
+    """Print a macOS launchd job (installs nothing). Redirect it into a .plist file."""
+    if job not in ops.JOBS:
+        typer.echo(f"error: --job must be one of {', '.join(ops.JOBS)}, got {job!r}", err=True)
+        raise typer.Exit(EXIT_USAGE)
     try:
         uv_path = ops.find_uv()
     except FileNotFoundError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(EXIT_USAGE) from None
-    typer.echo(ops.render_inav_plist(project_root=paths.project_root(), uv_path=uv_path), nl=False)
+    text = ops.render_plist(job, project_root=paths.project_root(), uv_path=uv_path)
+    typer.echo(text, nl=False)
+    if job == "daily-evening":
+        typer.echo(ops.MUHURAT_NOTE, err=True)  # stderr, so `> file.plist` stays clean
 
 
 if __name__ == "__main__":

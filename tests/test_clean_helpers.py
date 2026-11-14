@@ -46,6 +46,20 @@ RAW_FILES: list[tuple[str, date, str, str]] = [
     ("amc_inav_mirae", date(2026, 11, 10), "inav_155000.json", "amc_inav/mirae_ticker.json"),
     ("amc_inav_nippon", date(2026, 11, 10), "inav_155000.json",
      "amc_inav/nippon_DetailsFill.json"),
+    # BSE daily bhavcopy (R9): one legacy zip, one UDiFF CSV
+    ("bse_bhavcopy", date(2021, 1, 4), "EQ_ISINCODE_040121.zip",
+     "bse_bhavcopy/EQ_ISINCODE_040121.zip"),
+    ("bse_bhavcopy", date(2026, 11, 12), "BhavCopy_BSE_CM_0_0_0_20261112_F_0000.CSV",
+     "bse_bhavcopy/BhavCopy_BSE_CM_0_0_0_20261112_F_0000.CSV"),
+    # NSE securities lending (R8)
+    ("nse_slb_eligible", date(2021, 1, 4), "SLB_ELG_SEC_04012021.csv",
+     "nse_slb/SLB_ELG_SEC_04012021.csv"),
+    ("nse_slb_eligible", date(2026, 11, 12), "SLB_ELG_SEC_12112026.csv",
+     "nse_slb/SLB_ELG_SEC_12112026.csv"),
+    ("nse_slb_bhavcopy", date(2021, 1, 4), "SLBM_BC_04012021.DAT",
+     "nse_slb/SLBM_BC_04012021.DAT"),
+    ("nse_slb_bhavcopy", date(2026, 11, 12), "SLBM_BC_12112026.DAT",
+     "nse_slb/SLBM_BC_12112026.DAT"),
 ]  # fmt: skip
 
 

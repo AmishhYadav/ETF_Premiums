@@ -68,6 +68,36 @@ VERIFY before relying on the numbers:
 * The time and rate the fund houses use for NAV (SPEC 13 question 4).
 * Early-close days (the US half days) have a 13:00 close, not 16:00; use the real close time.
 
+## ETF minute bars (request R13)
+
+The limit-day diagnostics (`etfp.features.limit_days`) use 1-minute bars of the ETFs themselves
+when they exist, because the 15-minute recorder snapshots only see the price every 15 minutes
+(and for Sep-Oct 2026, before the recorder ran, there is nothing else). Same long format, no new
+columns. The convention:
+
+| Column | Rule for ETF minute bars |
+|---|---|
+| `instrument` | the NSE symbol plus `.1M`, for example `MONQ50.1M`, `MON100.1M`. The plain symbol (`MONQ50`) stays free for daily series, so a daily row is never mistaken for a bar |
+| `field` | `PX_OPEN`, `PX_HIGH`, `PX_LOW`, `PX_LAST` (the bar's closing price) and `VOLUME` (units traded in the bar). `PX_LAST` is required for a bar to be used; `PX_HIGH` / `PX_LOW` are optional but make "touched the limit" exact even when the bar closed away from it |
+| `timezone` | `Asia/Kolkata` |
+| `time` | the START of the bar (Bloomberg's own bar label): the bar stamped `15:29` covers 15:29 to 15:30. Regular session bars run `09:15` to `15:29` |
+| `date` | the Indian trading day |
+
+Bloomberg leaves out minutes with no trade; the pipeline reads a missing minute as "no trade, the
+last price stood". Prices are on the scale quoted on the day (not adjusted for later splits).
+Example (made-up numbers):
+
+```
+date,time,timezone,instrument,field,value,note
+2026-11-10,10:15,Asia/Kolkata,MONQ50.1M,PX_LAST,252.63,
+2026-11-10,10:15,Asia/Kolkata,MONQ50.1M,PX_HIGH,252.63,
+2026-11-10,10:15,Asia/Kolkata,MONQ50.1M,VOLUME,1200,
+```
+
+Pull them with `=BDIB("MONQ50 IN Equity", "TRADE", start, end, "BarSize=1")` (or the intraday
+tools) for the sessions of interest only (days a limit was touched, at least Sep-Oct 2026); the
+volume of rows is large. Read them back with `bloomberg.etf_minute_bars(frame, "MONQ50")`.
+
 ## How to build the file in Excel
 
 1. In a sheet use `=BDH(...)` (daily) or the intraday tools (`=BDIB`/`=BDH` with `BarSize`) to pull

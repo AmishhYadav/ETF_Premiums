@@ -388,6 +388,67 @@ def series_at(
     return out.sort_index()
 
 
+# --------------------------------------------------------------------------
+# ETF minute bars (R13)
+# --------------------------------------------------------------------------
+# Convention (docs/bloomberg_template.md): an ETF's 1-minute bars use the instrument code
+# ``<NSE symbol>.1M``, for example ``MONQ50.1M``, in the Asia/Kolkata zone. The plain symbol is
+# kept free for daily series. The same long format is used, so the importer needs no change.
+MINUTE_BAR_SUFFIX = ".1M"
+MINUTE_BAR_FIELDS: dict[str, str] = {
+    "PX_OPEN": "open",
+    "PX_HIGH": "high",
+    "PX_LOW": "low",
+    "PX_LAST": "last",
+    "VOLUME": "volume",
+}
+MINUTE_BAR_COLUMNS: tuple[str, ...] = (
+    "ts_ist",
+    "open",
+    "high",
+    "low",
+    "last",
+    "volume",
+    "source_file",
+)
+
+
+def minute_bar_instrument(symbol: str) -> str:
+    """The instrument code for an ETF's 1-minute bars: ``MONQ50`` -> ``MONQ50.1M``."""
+    return f"{symbol}{MINUTE_BAR_SUFFIX}"
+
+
+def etf_minute_bars(frame: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """One row per 1-minute bar of an ETF, from an imported frame (empty if there are none).
+
+    Columns: ``ts_ist`` (the bar's START time, IST; a bar stamped 15:29 covers 15:29-15:30),
+    ``open``, ``high``, ``low``, ``last`` (the bar's closing price), ``volume`` and
+    ``source_file`` (file of the ``PX_LAST`` row, else of any row of the bar). A field the
+    export did not include is NaN. Bloomberg leaves out minutes with no trade, so a missing
+    minute means "no trade", not "no data".
+    """
+    empty = pd.DataFrame({c: [] for c in MINUTE_BAR_COLUMNS})
+    if frame.empty:
+        return empty
+    sub = frame[
+        (frame["instrument"] == minute_bar_instrument(symbol))
+        & frame["field"].isin(MINUTE_BAR_FIELDS)
+    ]
+    if sub.empty:
+        return empty
+    wide = sub.pivot_table(index="ts_utc", columns="field", values="value", aggfunc="last")
+    out = pd.DataFrame({"ts_ist": wide.index.tz_convert(IST)}, index=wide.index)
+    for field_name, name in MINUTE_BAR_FIELDS.items():
+        out[name] = wide[field_name] if field_name in wide.columns else math.nan
+    files = sub.sort_values(["ts_utc", "field"]).copy()
+    files["_prefer"] = files["field"] != "PX_LAST"  # False sorts first: prefer the PX_LAST row
+    files = files.sort_values(["ts_utc", "_prefer"]).drop_duplicates("ts_utc")
+    out["source_file"] = files.set_index("ts_utc")["source_file"]
+    out = out.sort_index().reset_index(drop=True)
+    out["ts_ist"] = out["ts_ist"].astype(f"datetime64[us, {IST.key}]")
+    return out[list(MINUTE_BAR_COLUMNS)]
+
+
 @dataclass(frozen=True)
 class Requirement:
     """One series that must exist on every trading day of ``market`` in the checked range.

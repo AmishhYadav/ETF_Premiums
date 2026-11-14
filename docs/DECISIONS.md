@@ -212,6 +212,19 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 - Alerts (`etfp alerts [--dry-run]`): premium crossing 25/50/100% (on `prem_fv`), band touch, premium jump > 10 points, intraday iNAV premium crossing (Nippon excluded, D15), stale data / recorder / source failures. Thresholds in `config/alerts.yaml`. Dedupe key `rule|symbol|data day|variant` in `data/state/alerts_sent.json`, written only after Telegram accepts; lock file prevents overlapping runs. Token from environment or `.env`, never logged. No real message sent yet (needs `.env` from Amish).
 - OPEN: the 21:00 IST "build should exist" time is a guess; no "NAV missing" alert until HK/domestic NAV timing is confirmed.
 
+
+### D27. BSE daily bhavcopy (R9) and NSE securities lending (R8)
+- BSE: `https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_YYYYMMDD_F_0000.CSV` (UDiFF, from 2024-01-02 in our cutover) and legacy `EQ_ISINCODE_DDMMYY.zip` before that. A missing day returns HTTP 200 with BSE's home page (soft 404); detected and recorded as not available. Rows matched by ISIN (BSE names differ, e.g. NIFTYIETF was "ICICINIFTY" in 2021). Both formats agree on MON100, 5 Jul 2024. BSE rate limit 2 s. First UDiFF day and last legacy day bounded, not pinned.
+- `turnover` = (NSE + BSE units) / `units` from schema 1.1.0 (MEANING CHANGE); `turnover_is_nse_only` true only where BSE has no row.
+- SLB: `nsearchives.nseindia.com/archives/slbs/seclist/SLB_ELG_SEC_DDMMYYYY.csv` and `.../slbs/bhavcopy/SLBM_BC_DDMMYYYY.DAT` (header-less), back to at least 2021-01-04. Fee column order inferred from the data (VERIFY against NSE's layout). Finding: on 2021-01-04 none of the five international ETFs were SLB-eligible (only the three Nippon domestic ETFs); on 2024-01-02 and 2026-11-12 all five were. On 12 Nov 2026 only MAFANG had a lending trade (8,000 units). R8's "MON100 admitted Sep 2013" does not hold for the 2021 list.
+
+### D28. Limit-day diagnostics (R13, `features/limit_days.py`, table `limit_day`)
+- One row per ETF-day a limit was touched (daily flags or intraday). `obs_source` = `bloomberg_1m`, `snapshots_15m` or `none`; minutes at limit are an estimate with a lower bound. Widenings are a minimum consistent with prices seen. `locked_*` = opposite side of the book empty at the limit; NA when quantities unknown (never 0). Session window 09:15–15:30, so Muhurat evening sessions show no intraday data. Bloomberg ETF minute bars use instrument `<SYMBOL>.1M` (docs/bloomberg_template.md). Exported in schema 1.2.0 with BSE and SLB tables; manifest lists coverage.
+
+### D29. Scheduled daily run (`etfp run daily`, docs/OPERATIONS.md)
+- Evening 19:45 IST Mon–Fri: collect all daily sources → build → export → alerts. Morning 10:35 IST Mon–Fri for the previous session: gap-fill, force re-download of the AMFI window (overseas NAVs, D10), build, export, alerts. Mon–Fri (not Tue–Sat) so Monday fetches Friday's US NAV. A failed source does not stop the build; alerts always run; missing Telegram credentials = warning. Lock `data/state/run_daily.lock` (stale after 2 h); run records in `data/state/runs/`.
+- First supervised real run 14 Nov 2026 (morning, day 13 Nov): collect, build (15,434 ETF-days, 3 min) and export OK; Yahoo returned 429 again. Plists printed by `etfp ops launchd-plist --job daily-evening|daily-morning`; **not installed yet** (Amish to decide).
+
 ---
 
 ## Open VERIFY items (running list)
@@ -235,3 +248,5 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 | NIFTYBEES band ratio 1.105 on 2024-03-01 | R7/R10 | OPEN (D22) |
 | Muhurat session times (calendar uses 09:15–15:30) | calendars, nav_known on those days | OPEN (D24) |
 | AMFI NAV missing on Muhurat days the exchange used (e.g. 1 Nov 2024) | nav_t2 band base | OPEN (D24) |
+| SLB bhavcopy fee column order | R8 | OPEN — inferred from data (D27) |
+| Yahoo intraday access | free fair value | OPEN — 429 on 13 and 14 Nov (D22, D29) |

@@ -30,7 +30,7 @@ from test_clean_helpers import make_raw_root
 NOW = datetime(2026, 11, 13, 22, 0, tzinfo=IST)
 EXPECTED_FILES = {
     "etf_day.parquet", "inav_snapshots.parquet", "units_monthly.parquet", "units_daily.parquet",
-    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet",
+    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet",
     "schema.json", "DATA_DICTIONARY.md", "manifest.json",
 }  # fmt: skip
 
@@ -131,8 +131,9 @@ def test_etf_day_parquet_round_trips_with_typed_columns(exported, built) -> None
 def test_schema_json_documents_every_exported_column(exported) -> None:
     folder, *_ = exported
     schema = json.loads((folder / "schema.json").read_text())
-    assert schema["schema_version"] == SCHEMA_VERSION == "1.0.0"
-    assert schema["changelog"][0]["version"] == "1.0.0"
+    assert schema["schema_version"] == SCHEMA_VERSION == "1.2.0"
+    assert [c["version"] for c in schema["changelog"]] == ["1.0.0", "1.1.0", "1.2.0"]
+    assert "MEANING CHANGE" in schema["changelog"][1]["changes"]  # 1.1.0 turnover
     for name in (p.stem for p in folder.glob("*.parquet")):
         cols = pq.read_table(folder / f"{name}.parquet").column_names
         documented = [c["name"] for c in schema["tables"][name]["columns"]]
@@ -146,7 +147,7 @@ def test_schema_json_documents_every_exported_column(exported) -> None:
 def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
     folder, *_ = exported
     text = (folder / "DATA_DICTIONARY.md").read_text()
-    assert "Schema version **1.0.0**" in text
+    assert "Schema version **1.2.0**" in text
     assert "## etf_day" in text and "| cap_pi |" in text and "| prem_nav_known |" in text
     assert text.count("\n| ") > len(ETF_DAY_COLUMNS)
 
@@ -154,7 +155,7 @@ def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
 def test_manifest_contents(exported) -> None:
     folder, _, _, _ = exported
     m = json.loads((folder / "manifest.json").read_text())
-    assert m["schema_version"] == "1.0.0"
+    assert m["schema_version"] == "1.2.0"
     assert m["build_time_ist"] == "2026-11-13T22:00:00+05:30"
     assert m["git"] == {"commit": "uncommitted", "dirty": True}  # the temp folder is no repo
     assert m["date_range"]["etf_day"] == {"first": "2021-01-04", "last": "2026-11-09"}
@@ -319,3 +320,11 @@ def test_git_info_reports_commit_and_dirty_flag(tmp_path) -> None:
 def test_date_helper_is_ist_based() -> None:
     late = datetime(2026, 11, 13, 23, 30, tzinfo=IST)
     assert late.date() == date(2026, 11, 13)
+
+
+def test_manifest_reports_limit_day_coverage(exported) -> None:
+    folder = exported[0]
+    m = json.loads((folder / "manifest.json").read_text())
+    ld = m["limit_day"]
+    assert ld is not None and ld["rows"] == sum(ld["by_obs_source"].values())
+    assert isinstance(ld["days_without_intraday"], list)

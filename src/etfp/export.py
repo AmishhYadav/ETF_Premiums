@@ -49,7 +49,7 @@ from etfp.timeutil import IST, now_ist
 
 logger = logging.getLogger("etfp.export")
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.2.0"
 SCHEMA_CHANGELOG: list[dict[str, str]] = [
     {
         "version": "1.0.0",
@@ -60,7 +60,33 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "(R10), units and creation events (R1), turnover (R9, NSE part), feeder float (R14), "
             "returns and data-quality flags. BLUEPRINT alias columns included."
         ),
-    }
+    },
+    {
+        "version": "1.1.0",
+        "date": "2026-11-14",
+        "changes": (
+            "BSE columns filled (R9): bse_close, bse_volume, bse_value, bse_trades come from "
+            "BSE's daily bhavcopy, matched to the fund by ISIN. MEANING CHANGE: turnover is now "
+            "(NSE + BSE units traded) / units; in 1.0.0 it was NSE units / units. turnover_nse "
+            "is unchanged. turnover_is_nse_only is now True only on days with no BSE row "
+            "(1.0.0: always True). A day with no BSE row counts BSE as zero in turnover, so "
+            "filter on turnover_is_nse_only when the BSE part matters. bse_close is adjusted "
+            "for unit splits like close (price_adj_factor)."
+        ),
+    },
+    {
+        "version": "1.2.0",
+        "date": "2026-11-14",
+        "changes": (
+            "New files only; no etf_day column changes meaning. limit_day.parquet (R13): one "
+            "row per ETF-day a price limit was touched, with first touch time, minutes at the "
+            "limit (estimate; obs_source says snapshots_15m, bloomberg_1m or none), inferred "
+            "widenings, book quantity at the limit and locked_up/locked_down. "
+            "slb_eligible.parquet and slb_daily.parquet (R8): NSE securities-lending "
+            "eligibility and daily lending trades. bse_prices.parquet (R9): the BSE rows "
+            "behind the bse_* columns."
+        ),
+    },
 ]
 
 
@@ -682,30 +708,50 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
     ),
     # ---- BSE and turnover (R9) --------------------------------------------------------------------
     "bse_close": _c(
-        "float", "BSE close. Empty until R9 is built.", "rupees per unit", "", "not yet collected"
+        "float",
+        "BSE official close on the same date as the NSE row, on the same unit scale as close "
+        "(adjusted for unit splits). Empty when BSE has no row for that fund and day.",
+        "rupees per unit",
+        "bse_prices.close x price_adj_factor",
+        "BSE daily bhavcopy (raw bse_bhavcopy), matched by ISIN",
     ),
     "bse_volume": _c(
-        "int", "Units traded on BSE. Empty until R9 is built.", "units", "", "not yet collected"
+        "int",
+        "Units traded on BSE that day (not split-adjusted, like volume). Empty when BSE has no "
+        "row for that fund and day.",
+        "units",
+        "",
+        "BSE daily bhavcopy (raw bse_bhavcopy), matched by ISIN",
     ),
     "bse_value": _c(
-        "float", "BSE traded value. Empty until R9 is built.", "rupees", "", "not yet collected"
+        "float",
+        "Rupees traded on BSE that day. Empty when BSE has no row.",
+        "rupees",
+        "",
+        "BSE daily bhavcopy (raw bse_bhavcopy), matched by ISIN",
     ),
     "bse_trades": _c(
-        "int", "BSE number of trades. Empty until R9 is built.", "count", "", "not yet collected"
+        "int",
+        "Number of trades on BSE that day. Empty when BSE has no row.",
+        "count",
+        "",
+        "BSE daily bhavcopy (raw bse_bhavcopy), matched by ISIN",
     ),
     "turnover_nse": _c(
         "float", "Units traded on NSE / units.", "fraction of units", "volume / units", "derived"
     ),
     "turnover": _c(
         "float",
-        "(NSE + BSE units traded) / units. While BSE is empty it equals turnover_nse and turnover_is_nse_only is true.",
+        "(NSE + BSE units traded) / units. CHANGED in schema 1.1.0 (was NSE only). A day with no "
+        "BSE row counts BSE as zero, so it equals turnover_nse and turnover_is_nse_only is true.",
         "fraction of units",
-        "(volume + bse_volume) / units",
+        "(volume + bse_volume) / units; bse_volume treated as 0 when empty",
         "derived",
     ),
     "turnover_is_nse_only": _c(
         "bool",
-        "True when turnover has no BSE part (understated; R9).",
+        "True when turnover has no BSE part because there is no BSE row for the fund and day "
+        "(understated if the fund really traded on BSE; R9).",
         "",
         "bse_volume is null",
         "derived",
@@ -879,7 +925,16 @@ def etf_day_schema_registered() -> Iterator[TableSchema]:
 # ==========================================================================
 # The export
 # ==========================================================================
-COPIED_TABLES = ("inav_snapshots", "units_monthly", "fof_monthly", "trends_daily")
+COPIED_TABLES = (
+    "inav_snapshots",
+    "units_monthly",
+    "fof_monthly",
+    "trends_daily",
+    "limit_day",
+    "slb_eligible",
+    "slb_daily",
+    "bse_prices",
+)
 """Clean tables copied as they are (their parquet files already have the registered types)."""
 MARKET_HOURS = (time(9, 10), time(15, 35))
 """Snapshots inside this IST window count as intraday coverage (the recorder runs 09:15-15:30)."""
@@ -1135,7 +1190,8 @@ def export_research(
     written under a temporary name and swapped in at the end, so a failed export never leaves
     a half-written folder and ``LATEST.txt`` still names the previous good one.
     """
-    from etfp import build  # lazy: build imports this module
+    from etfp import build  # lazy: build imports this module (it also imports etfp.clean
+    # and etfp.features.limit_days, which register the bse/slb/limit_day schemas)
 
     root = build.resolve_root(store, root)
     cfg = build.load_config(root)
@@ -1200,6 +1256,22 @@ def export_research(
     _atomic_text(out_root / "LATEST.txt", str(folder.resolve()) + "\n")
     logger.info("research export written to %s", folder)
     return folder
+
+
+def _limit_day_coverage(ld: pd.DataFrame | None) -> dict[str, Any] | None:
+    """Which limit days have minute bars, snapshots or no intraday data (R13 asks for this)."""
+    if ld is None:
+        return None
+    return {
+        "rows": len(ld),
+        "by_obs_source": {str(k): int(v) for k, v in ld["obs_source"].value_counts().items()},
+        "days_with_bloomberg_minute_bars": sorted(
+            ld.loc[ld["obs_source"] == "bloomberg_1m", "date"].astype(str).unique()
+        ),
+        "days_without_intraday": sorted(
+            ld.loc[ld["obs_source"] == "none", "date"].astype(str).unique()
+        ),
+    }
 
 
 def _manifest(
@@ -1288,6 +1360,7 @@ def _manifest(
         "fv_method_counts": methods,
         "bloomberg_files": bloomberg_files,
         "recorder_gaps": recorder_gaps(frames.get("inav_snapshots", pd.DataFrame())),
+        "limit_day": _limit_day_coverage(frames.get("limit_day")),
         "creation_unit_sizes_missing": units.missing_creation_unit_sizes(needed, sizes),
         "open_verify_items": parse_open_verify_items(decisions_path),
         "files": files,

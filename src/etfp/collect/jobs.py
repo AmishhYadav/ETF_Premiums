@@ -30,9 +30,11 @@ from typing import Literal
 from etfp import calendars
 from etfp.collect import (
     amfi_nav,
+    bse_bhavcopy,
     nse_bhavcopy,
     nse_etf_listfile,
     nse_secmaster,
+    nse_slb,
     nse_udiff,
     yahoo_intraday,
 )
@@ -56,10 +58,22 @@ ETF_LIST = "etf_list"
 NAVALL = "navall"
 AMFI_HISTORY = "amfi_history"
 YAHOO = "yahoo"
+BSE = "bse"  # BSE daily bhavcopy (R9)
+SLB = "slb"  # NSE securities lending: eligible list + SLB bhavcopy (R8)
 
-DAILY_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, ETF_LIST, NAVALL, AMFI_HISTORY, YAHOO)
+DAILY_SOURCES: tuple[str, ...] = (
+    BHAVCOPY,
+    UDIFF,
+    SECMASTER,
+    ETF_LIST,
+    NAVALL,
+    AMFI_HISTORY,
+    YAHOO,
+    BSE,
+    SLB,
+)
 # NSE's list file and AMFI's NAVAll are "latest only" snapshots, so they cannot be backfilled.
-BACKFILL_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO)
+BACKFILL_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
 SOURCE_HELP = {
     BHAVCOPY: "NSE full bhavcopy (prices and delivery)",
     UDIFF: "NSE UDiFF bhavcopy (ISIN, exact turnover)",
@@ -68,9 +82,12 @@ SOURCE_HELP = {
     NAVALL: "AMFI NAVAll.txt (latest snapshot only)",
     AMFI_HISTORY: "AMFI NAV history window",
     YAHOO: "Yahoo futures and FX 5-minute bars (interim free fair value)",
+    BSE: "BSE daily bhavcopy (BSE close, units, value, trades)",
+    SLB: "NSE securities lending: eligible list and SLB bhavcopy",
 }
 
 NSE_HOST = "nseindia.com"
+BSE_HOST = "bseindia.com"
 AMFI_HOST = "amfiindia.com"
 YAHOO_HOST = "finance.yahoo.com"
 
@@ -156,6 +173,36 @@ def _single_day_units(key: str, day: date) -> list[Unit]:
     if key == SECMASTER:
         return [_nse_unit(nse_secmaster, day, lambda c, s: nse_secmaster.fetch(c, s, day))]
     raise ValueError(f"not a per-day source: {key}")  # pragma: no cover
+
+
+def _bse_unit(day: date) -> Unit:
+    return Unit(
+        source=bse_bhavcopy.SOURCE,
+        day=day,
+        name=bse_bhavcopy.raw_name(day),
+        host=BSE_HOST,
+        fetch=lambda c, s: bse_bhavcopy.fetch(c, s, day),
+    )
+
+
+def _slb_units(day: date) -> list[Unit]:
+    """Two NSE archive files per day: the eligible list and the SLB bhavcopy."""
+    return [
+        Unit(
+            source=nse_slb.SOURCE_ELIGIBLE,
+            day=day,
+            name=nse_slb.eligible_raw_name(day),
+            host=NSE_HOST,
+            fetch=lambda c, s: nse_slb.fetch_eligible(c, s, day),
+        ),
+        Unit(
+            source=nse_slb.SOURCE_BHAVCOPY,
+            day=day,
+            name=nse_slb.bhavcopy_raw_name(day),
+            host=NSE_HOST,
+            fetch=lambda c, s: nse_slb.fetch_bhavcopy(c, s, day),
+        ),
+    ]
 
 
 def _yahoo_units(day: date, now: datetime) -> tuple[list[Unit], str | None]:
@@ -253,6 +300,10 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
             units += yahoo_units
             if note:
                 notes.append(note)
+        elif key == BSE:
+            units.append(_bse_unit(day))
+        elif key == SLB:
+            units += _slb_units(day)
         else:
             raise ValueError(f"unknown source {key!r}")
     return Plan(units, notes)
@@ -312,6 +363,11 @@ def plan_backfill(start: date, end: date, sources: Sequence[str], *, now: dateti
                     f"{YAHOO}: {lost} trading day(s) are older than Yahoo's intraday history and "
                     "were not planned (NOT recoverable)"
                 )
+        elif key == BSE:
+            units += [_bse_unit(day) for day in session_days]
+        elif key == SLB:
+            for day in session_days:
+                units += _slb_units(day)
         elif key in (ETF_LIST, NAVALL):
             notes.append(f"{key}: latest-snapshot file, cannot be backfilled; ignored")
         else:
@@ -327,6 +383,8 @@ def plan_backfill(start: date, end: date, sources: Sequence[str], *, now: dateti
 def _not_found_hint(unit: Unit) -> str:
     if unit.host == NSE_HOST:
         return "not published (yet?). NSE posts the daily files in the evening, after ~19:00 IST"
+    if unit.host == BSE_HOST:
+        return "not published (yet?). BSE posts the daily file in the evening; try again later"
     return "not found"
 
 
@@ -377,6 +435,13 @@ def run_units(
             record = unit.fetch(client, store)
         except SourceNotFoundError as exc:
             streak[unit.host] = 0  # the site answered; a 404 is not an outage
+            # Normally a real HTTP 404. BSE instead answers 200 with a web page for a missing
+            # file; its collector raises the same error with the real status code (200).
+            what = (
+                "HTTP 404"
+                if exc.status_code in (None, 404)
+                else f"HTTP {exc.status_code} web page instead of the file"
+            )
             if state is not None:
                 state.mark_unavailable(
                     unit.source,
@@ -384,11 +449,11 @@ def run_units(
                     unit.name,
                     status_code=exc.status_code,
                     url=exc.url,
-                    note="HTTP 404 during backfill",
+                    note=f"{what} during backfill",
                 )
-                done(Outcome(unit, "unavailable", "HTTP 404, recorded as not available"))
+                done(Outcome(unit, "unavailable", f"{what}, recorded as not available"))
             else:
-                done(Outcome(unit, "failed", f"HTTP 404: {_not_found_hint(unit)}"))
+                done(Outcome(unit, "failed", f"{what}: {_not_found_hint(unit)}"))
             continue
         except SourceBlockedError as exc:
             reason = f"blocked by {unit.host} (HTTP {exc.status_code}); no more requests to it"

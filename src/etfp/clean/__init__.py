@@ -13,6 +13,10 @@ feeder funds, monthly units) or downloaded by hand (``data/raw/trends/``). A
 missing file simply gives an empty table. They run after ``etf_master`` because
 they check ETF symbols against it.
 
+``bse_prices`` (R9, BSE daily bhavcopy) and ``slb_eligible`` / ``slb_daily`` (R8, NSE
+securities lending) come last; they read raw folders that may not exist yet (an empty
+table results) and, like the other cleaners, never touch the raw files.
+
 Tables with no cleaner yet (``underlying_daily``, ``fx_daily``, ``etf_day``) are
 created EMPTY if they do not exist, so readers can query them; an existing one is
 never overwritten here because other importers and the feature code own them.
@@ -26,6 +30,7 @@ from pathlib import Path
 from etfp import paths
 from etfp.clean import (
     band_official,
+    bse_prices,
     etf_master,
     inav_snapshots,
     manual_events,
@@ -34,6 +39,7 @@ from etfp.clean import (
     manual_units,
     nav_daily,
     prices_daily,
+    slb,
     units_daily,
 )
 from etfp.clean.common import CleanContext, CleanError
@@ -56,6 +62,9 @@ CLEANERS = (
     ("fof_monthly", manual_fof),
     ("units_monthly", manual_units),
     ("trends_daily", manual_trends),
+    ("bse_prices", bse_prices),
+    ("slb_eligible", slb.ELIGIBLE),
+    ("slb_daily", slb.DAILY),
 )
 
 

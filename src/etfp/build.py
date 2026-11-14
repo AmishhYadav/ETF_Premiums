@@ -45,7 +45,16 @@ from etfp.collect import bloomberg, yahoo_intraday
 from etfp.config import BandRules, Etf, EtfUniverse, load_etfs, load_rules
 from etfp.corporate_actions import CorporateActions, adjustment_factor, load_corporate_actions
 from etfp.export import ETF_DAY_COLUMNS, etf_day_schema_registered
-from etfp.features import bands, beta, fair_value, nav_align, premiums, quality, units
+from etfp.features import (
+    bands,
+    beta,
+    fair_value,
+    limit_days,  # importing registers the limit_day schema
+    nav_align,
+    premiums,
+    quality,
+    units,
+)
 from etfp.store import Store, coerce, get_schema
 
 logger = logging.getLogger("etfp.build")
@@ -808,6 +817,25 @@ def _units_block(
     )
 
 
+def _bse_block(days: list[date], bse: pd.DataFrame, price_factor: pd.Series) -> pd.DataFrame:
+    """BSE close, units, rupees and trades on the NSE row's date (empty where BSE has no row).
+
+    The BSE close gets the same split adjustment as the NSE prices (``price_adj_factor``),
+    so ``close`` and ``bse_close`` are on the same unit scale. Units and rupees are left as
+    published, like the NSE ``volume`` and ``value``.
+    """
+    by_day = bse.drop_duplicates("date").set_index("date").reindex(days)
+    return pd.DataFrame(
+        {
+            "bse_close": by_day["close"].astype("float64").to_numpy() * price_factor.to_numpy(),
+            "bse_volume": pd.array(by_day["volume"].to_numpy(), dtype="Int64"),
+            "bse_value": by_day["value"].astype("float64").to_numpy(),
+            "bse_trades": pd.array(by_day["trades"].to_numpy(), dtype="Int64"),
+        },
+        index=price_factor.index,
+    )
+
+
 def _feeder_block(symbol: str, days: list[date], fof: pd.DataFrame) -> pd.DataFrame:
     """Feeder-held ETF units (lagged so only published figures count) for one symbol."""
     sub = fof[fof["etf_symbol"] == symbol] if len(fof) else fof
@@ -867,13 +895,16 @@ def _symbol_frame(
 
     vol = df["volume"].astype("float64")
     units_f = df["units"].astype("float64")
-    df["bse_close"] = np.nan
-    df["bse_volume"] = pd.array([pd.NA] * len(df), dtype="Int64")
-    df["bse_value"] = np.nan
-    df["bse_trades"] = pd.array([pd.NA] * len(df), dtype="Int64")
+    bse = _bse_block(
+        days, tables["bse_prices"][lambda d: d["symbol"] == sym], df["price_adj_factor"]
+    )
+    df = pd.concat([df, bse], axis=1)
     df["turnover_nse"] = premiums.turnover_units(vol, units_f)
-    df["turnover"] = df["turnover_nse"]  # BSE volume is empty until R9 (then add it here)
-    df["turnover_is_nse_only"] = _bools([True] * len(df))
+    # R9: units traded on both exchanges / units outstanding. A day with no BSE row counts BSE
+    # as zero in the sum but is flagged NSE-only, so the understated days can be dropped.
+    both = vol + df["bse_volume"].astype("float64").fillna(0.0)
+    df["turnover"] = premiums.turnover_units(both, units_f)
+    df["turnover_is_nse_only"] = _bools([bool(x) for x in df["bse_volume"].isna()])
 
     df = pd.concat([df, _feeder_block(sym, days, tables["fof_monthly"])], axis=1)
     free_units = units_f - df["feeder_units"]
@@ -919,7 +950,14 @@ def build_etf_day(
     prices = store.read_table("prices_daily")
     tables = {
         name: _empty(name, store)
-        for name in ("nav_daily", "units_daily", "band_official", "units_monthly", "fof_monthly")
+        for name in (
+            "nav_daily",
+            "units_daily",
+            "band_official",
+            "units_monthly",
+            "fof_monthly",
+            "bse_prices",
+        )
     }
     sizes = units.creation_unit_sizes(cfg.universe)
 
@@ -1068,7 +1106,15 @@ def build_all(root: Path | None = None) -> dict[str, Any]:
         frame = build_etf_day(store, root=root)
         n = store.write_table("etf_day", frame)
     logger.info("etf_day: %d rows", n)
-    return {"clean": counts, "etf_day": n}
+    # R13: intraday diagnostics for days a price limit was touched.
+    imported = bloomberg.import_directory(
+        root / "data" / "raw" / bloomberg.SOURCE, on_conflict="latest"
+    )
+    n_ld = store.write_table(
+        "limit_day", limit_days.build_limit_days(store, frame, bloomberg_frame=imported.frame)
+    )
+    logger.info("limit_day: %d rows", n_ld)
+    return {"clean": counts, "etf_day": n, "limit_day": n_ld}
 
 
 __all__ = [
