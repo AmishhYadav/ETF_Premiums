@@ -28,8 +28,10 @@ app = typer.Typer(
 )
 collect_app = typer.Typer(help="Download raw data (saved untouched under data/raw/).")
 ops_app = typer.Typer(help="Scheduling and operations helpers.")
+export_app = typer.Typer(help="Write exports that other tools read (research handoff).")
 app.add_typer(collect_app, name="collect")
 app.add_typer(ops_app, name="ops")
+app.add_typer(export_app, name="export")
 
 EXIT_USAGE = 2
 EXIT_LOCKED = 3
@@ -347,6 +349,73 @@ def status() -> None:
     store = RawStore(paths.raw_dir())
     for line in ops.status_lines(store=store, state_dir=paths.state_dir(), now=now_ist()):
         typer.echo(line)
+
+
+@app.command()
+def build(
+    no_export: Annotated[
+        bool, typer.Option("--no-export", help="Skip the research export after the build.")
+    ] = False,
+) -> None:
+    """Rebuild every clean table and etf_day from data/raw, then export for research.
+
+    CLAUDE.md asks for the research export after every build, so it runs by
+    default. A bad raw file stops the build with the table and file named.
+    """
+    # Imported here so `etfp collect ...` stays fast and does not load pandas-heavy code.
+    from etfp.build import build_all
+    from etfp.clean.common import CleanError
+
+    _configure_logging()
+    try:
+        result = build_all()
+    except CleanError as exc:
+        typer.echo(f"BUILD FAILED: {exc}", err=True)
+        raise typer.Exit(1) from None
+    for table, rows in sorted(result["clean"].items()):
+        typer.echo(f"clean  {table:<16} {rows:>9} rows")
+    typer.echo(f"etf_day                 {result['etf_day']:>9} rows")
+    if not no_export:
+        _export_research()
+
+
+def _export_research() -> None:
+    from etfp.export import export_research
+    from etfp.store import Store
+
+    folder = export_research(Store())
+    typer.echo(f"research export: {folder}")
+
+
+@export_app.command("research")
+def export_research_cmd() -> None:
+    """Write exports/research/<date>/ (parquet, schema, manifest) and LATEST.txt."""
+    _configure_logging()
+    _export_research()
+
+
+@app.command()
+def alerts(
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Print the alerts that would be sent; send nothing.")
+    ] = False,
+) -> None:
+    """Evaluate alert rules on etf_day and iNAV snapshots; send new ones to Telegram."""
+    from etfp.alerts import (
+        AlertDeliveryError,
+        AlertsAlreadyRunningError,
+        MissingCredentialsError,
+        run_alerts,
+    )
+    from etfp.store import Store
+
+    _configure_logging()
+    try:
+        new = run_alerts(Store(), dry_run=dry_run)
+    except (MissingCredentialsError, AlertDeliveryError, AlertsAlreadyRunningError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"{len(new)} alert(s) {'would be sent' if dry_run else 'sent'}")
 
 
 @ops_app.command("launchd-plist")

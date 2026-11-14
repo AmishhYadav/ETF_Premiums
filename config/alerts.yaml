@@ -1,0 +1,55 @@
+# Alert rules (SPEC section 10). Parsed by etfp.alerts.rules.load_alert_config.
+#
+# `uv run etfp alerts` evaluates these rules and sends new alerts to Telegram.
+# The same alert is never sent twice: data/state/alerts_sent.json remembers what
+# went out (one alert per rule, symbol, data day and direction).
+#
+# Premium numbers below are in PERCENT (25 means a premium of 25%). In the data
+# tables a premium is a fraction (0.25), the code converts. "Points" means
+# percentage points: a move from 20% to 31% is 11 points.
+#
+# Alerts describe what the data shows. They are not advice.
+
+# 1. The premium over fair value crosses a level, going up or down.
+#    "Crosses" compares the latest trading day with the previous row of the
+#    same ETF in etf_day.
+premium_cross:
+  enabled: true
+  measure: prem_fv          # column of etf_day: prem_fv (default), prem_nav_known, prem_raw
+  levels_pct: [25, 50, 100]
+
+# 2. The close (or last trade) of the latest day sits at the upper or lower
+#    price limit in force (flags close_at_upper / last_at_up and the lower twins).
+band_touch:
+  enabled: true
+
+# 3. The premium moved by more than this many points since the previous row.
+premium_jump:
+  enabled: true
+  measure: prem_fv
+  points: 10
+
+# 4. Intraday: the premium of the last traded price over the fund house's iNAV
+#    crosses a level, using today's snapshots.
+inav_premium_cross:
+  enabled: true
+  levels_pct: [25, 50, 100]
+  # Which source's iNAV to trust, in order of preference. amc_nippon is left out
+  # on purpose: its numbers are untrusted (DECISIONS D15).
+  inav_sources: [amc_motilal, amc_mirae, nse_quote]
+  # A price and an iNAV are paired only if their fetch times are this close.
+  max_pair_gap_minutes: 10
+
+# 5. Data failures: something stopped feeding the tracker.
+data_failure:
+  enabled: true
+  # The daily build is expected to have the latest NSE session by this IST time.
+  # Later than that and still missing = "data is stale".
+  expected_by_ist: "21:00"
+  # While the iNAV recorder should be running, alert if its heartbeat is older
+  # than inav.heartbeat_stale_minutes (config/collect.yaml), and when a source
+  # failed in the last tick.
+  check_recorder: true
+
+# How many days of sent-alert memory to keep in data/state/alerts_sent.json.
+dedupe_keep_days: 14

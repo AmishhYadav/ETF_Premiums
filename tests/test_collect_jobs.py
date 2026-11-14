@@ -187,12 +187,18 @@ def test_plan_backfill_nse_files_only_for_trading_days():
         date(2026, 11, 6), date(2026, 11, 11), [jobs.BHAVCOPY], now=NOW + timedelta(days=3)
     )
     # Fri 6, (weekend), Mon 9, (Tue 10 holiday), Wed 11
-    assert [u.day for u in plan.units] == [date(2026, 11, 6), date(2026, 11, 9), date(2026, 11, 11)]
+    # Sun 8 Nov 2026 is the Diwali Muhurat session (D24).
+    assert [u.day for u in plan.units] == [
+        date(2026, 11, 6),
+        date(2026, 11, 8),
+        date(2026, 11, 9),
+        date(2026, 11, 11),
+    ]
 
 
 def test_plan_backfill_stops_at_today_and_says_so():
     plan = jobs.plan_backfill(date(2026, 11, 6), date(2026, 12, 31), [jobs.BHAVCOPY], now=NOW)
-    assert [u.day for u in plan.units] == [date(2026, 11, 6), date(2026, 11, 9)]
+    assert [u.day for u in plan.units] == [date(2026, 11, 6), date(2026, 11, 8), date(2026, 11, 9)]
     assert any("future" in n for n in plan.notes)
 
 

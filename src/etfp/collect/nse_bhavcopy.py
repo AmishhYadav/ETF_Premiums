@@ -22,8 +22,10 @@ import csv
 import io
 import math
 import re
+import zipfile
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from xml.etree import ElementTree
 
 import pandas as pd
 
@@ -168,8 +170,73 @@ def _to_rupees(lacs_text: str, line: int) -> float:
         raise _fail(line, f"column TURNOVER_LACS: {lacs_text!r} is not a number") from exc
 
 
+_XLSX_NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+
+def _column_index(cell_ref: str) -> int:
+    """'A1' -> 0, 'O7' -> 14, 'AA3' -> 26 (Excel column letters to a 0-based index)."""
+    letters = re.match(r"[A-Z]+", cell_ref)
+    if letters is None:
+        raise ValueError(f"{SOURCE}: bad cell reference {cell_ref!r} in Excel file")
+    n = 0
+    for ch in letters.group(0):
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n - 1
+
+
+def _xlsx_rows(content: bytes) -> list[tuple[int, list[str]]]:
+    """Read the first sheet of an .xlsx file into (row number, cell texts).
+
+    NSE occasionally serves the "csv" bhavcopy as an Excel workbook (seen for
+    2022-08-08). An .xlsx file is a zip of XML parts, so the standard library is
+    enough: shared strings live in xl/sharedStrings.xml and cells in
+    xl/worksheets/sheet1.xml. Numbers come back as the text Excel stored, which
+    the normal CSV field parsers then read, so both formats share one code path.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            names = set(z.namelist())
+            if "xl/worksheets/sheet1.xml" not in names:
+                raise ValueError(
+                    f"{SOURCE}: zip file is not an Excel workbook ({sorted(names)[:5]})"
+                )
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in names:
+                root = ElementTree.fromstring(z.read("xl/sharedStrings.xml"))
+                for si in root.findall("m:si", _XLSX_NS):
+                    shared.append("".join(t.text or "" for t in si.iter(f"{{{_XLSX_NS['m']}}}t")))
+            sheet = ElementTree.fromstring(z.read("xl/worksheets/sheet1.xml"))
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"{SOURCE}: file starts like a zip but cannot be opened ({exc})") from exc
+    rows: list[tuple[int, list[str]]] = []
+    for row in sheet.iter(f"{{{_XLSX_NS['m']}}}row"):
+        cells: dict[int, str] = {}
+        for c in row.findall("m:c", _XLSX_NS):
+            kind = c.get("t")
+            if kind == "inlineStr":
+                text = "".join(t.text or "" for t in c.iter(f"{{{_XLSX_NS['m']}}}t"))
+            else:
+                v = c.find("m:v", _XLSX_NS)
+                text = "" if v is None or v.text is None else v.text
+                if kind == "s":
+                    text = shared[int(text)]
+            cells[_column_index(c.get("r", ""))] = text
+        if cells:
+            width = max(cells) + 1
+            rows.append(
+                (int(row.get("r", len(rows) + 1)), [cells.get(i, "") for i in range(width)])
+            )
+    return rows
+
+
 def _read_rows(content: bytes) -> tuple[list[str], list[tuple[int, list[str]]]]:
     """Split the file into a stripped header and (line number, stripped fields) rows."""
+    if content[:2] == b"PK":  # a zip: NSE sent an Excel workbook instead of CSV text
+        xrows = [(n, [f.strip() for f in fields]) for n, fields in _xlsx_rows(content)]
+        xrows = [(n, f) for n, f in xrows if any(f)]
+        if not xrows:
+            raise ValueError(f"{SOURCE}: Excel file has no rows")
+        return xrows[0][1], xrows[1:]
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:

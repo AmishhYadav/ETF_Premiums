@@ -187,6 +187,31 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 - **Trends (R15).** Windows chained in start-date order by the ratio of sums on shared days; earlier days keep their value; series rescaled to max 100; `<1` stored as 0.5. No overlap, zero overlap or weekly format stops the build.
 - **Config.** Creation units MONQ50 600,000 and MON100 250,000 (scheme documents); MASPTOP50, MAFANG null and in `verify`. Every D7 unit change for MONQ50, MON100, MAHKTECH, HNGSNGBEES is a whole multiple of the size. `nav_t2.start` marked `verify`. Equity bands: `breadth_test: false`, `widen_moving_side_only: true` (final SEBI circular para 5.1).
 
+
+### D24. Diwali Muhurat sessions are NSE sessions; NSE sometimes serves Excel (14 Nov 2026)
+- **Finding.** The real build showed computed and official bands disagreeing on 9 Nov 2026 for all 12 ETFs, and nowhere else from 7 Sep 2026 (540 of 552 session-rows matched to the tick). NSE's 9 Nov `PREV_CLOSE` for MONQ50 was 231.90, not the 6 Nov close 227.58: it was the close of the **Diwali Muhurat session on Sunday 8 Nov 2026**, which our calendar did not know.
+- **Evidence from NSE's own files (saved under data/raw):** the security master dated 8 Nov 2026 gives MONQ50 208.71–255.09 = 231.90 × 0.9 and × 1.1, so the 9 Nov band is based on the Muhurat close. In the T-2 regime, the band for Mon 4 Nov 2024 (file dated 1 Nov 2024) is 130.60–195.91 for MON100 = 1.2 / 0.8 × NAV dated 31 Oct (163.2638), i.e. T-2 counted the Muhurat session of Fri 1 Nov 2024. Full bhavcopy returned HTTP 200 for every Muhurat date 2021–2025.
+- **Decision.** `config/calendars/nse_holidays.yaml` `extra_sessions`: 2021-11-04, 2022-10-24, 2023-11-12, 2024-11-01, 2025-10-21, 2026-11-08. The calendar stores 09:15–15:30 for them; the real session was about one hour in the evening (exact times VERIFY).
+- **Consequences.** Session numbering after 8 Nov 2026 shifts by one (9 Nov = session 44 counted from 7 Sep, paper says 43; P2 window 16–40 unaffected). Flagged to the research side in REQUESTS R19 and kept as a strict xfail. The AMFI daily window now skips weekend special sessions so Friday's late overseas NAV is still fetched.
+- **AMFI gap on Muhurat days.** The band for 5 Nov 2024 implies a base of about 164.01 (MON100) / 65.175 (MONQ50), which matches no AMFI NAV: AMFI history has no row dated 1 Nov 2024 although the US traded that day. The exchange used a NAV that AMFI does not carry. `nav_t2` falls back to the 31 Oct NAV and `band_mismatch` flags the day; the official band is the truth for those sessions.
+- **Excel served as CSV.** NSE served `sec_bhavdata_full_08082022.csv` as an .xlsx workbook (1 of ~600 files so far). The parser now reads .xlsx with the standard library (zip + XML) into the same code path; adding openpyxl as a dependency was not approved in this session.
+
+### D25. etf_day and research export (`src/etfp/build.py`, `src/etfp/export.py`)
+- One row per configured ETF per NSE price day (137 columns; definitions in `export.ETF_DAY_COLUMNS`, exported as `schema.json` and `DATA_DICTIONARY.md`). `schema_version` 1.0.0; any change of meaning bumps it and adds to `SCHEMA_CHANGELOG`.
+- Prices, NAVs and official band limits adjusted to today's unit scale with kind-specific factors (D22); raw prices kept in `*_raw`.
+- Fair value per row: Bloomberg if complete, else Yahoo (`free_futures`), else `nav_only`. NAV-time FX approximated by the rate at the underlying close (AMC FX time still VERIFY).
+- `fv_beta` (R12) = NAV × (F_t/F_a)^β × S_t/S_a, β from 250 NAV dates before 2026-09-07; NaN until futures history exists. HK and domestic funds copy `fv`.
+- `cap_pi` uses the official upper limit only; `cap_pi_computed` uses the computed band (covers pre-Feb-2024).
+- `regime_inferred`: official band (±1 tick) where available; before 2024-02-05 a price test (`nav_t2_consistent` / `not_nav_t2`).
+- Unit changes land on the first price row on or after the security-master file showing them. `units` = security master, else monthly AUM/NAV within 45 days (`units_source`). `turnover` and `float_net` use `units`.
+- `rationed` = `pi` > 0.02 and no creation in the previous 20 rows (BLUEPRINT). BLUEPRINT aliases (`nav_known`, `prem_known`, `pi`, `band_low/high`, `creation_event`, `units`) are real duplicate columns.
+- `etfp build` runs `build_all` then the research export (CLAUDE.md). First real build 14 Nov 2026: 15,410 ETF-days in 2.7 min; NAV empty until the AMFI backfill finishes.
+
+### D26. Dashboard and alerts (M4)
+- Dashboard (`uv run --extra dashboard streamlit run dashboard/app.py`) reads Parquet only, never DuckDB, so it cannot block a build. SPEC §9 disclaimer at top and bottom; a test scans labels for advice words.
+- Alerts (`etfp alerts [--dry-run]`): premium crossing 25/50/100% (on `prem_fv`), band touch, premium jump > 10 points, intraday iNAV premium crossing (Nippon excluded, D15), stale data / recorder / source failures. Thresholds in `config/alerts.yaml`. Dedupe key `rule|symbol|data day|variant` in `data/state/alerts_sent.json`, written only after Telegram accepts; lock file prevents overlapping runs. Token from environment or `.env`, never logged. No real message sent yet (needs `.env` from Amish).
+- OPEN: the 21:00 IST "build should exist" time is a guess; no "NAV missing" alert until HK/domestic NAV timing is confirmed.
+
 ---
 
 ## Open VERIFY items (running list)
@@ -208,3 +233,5 @@ The iNAV recorder had been built on 10 Nov but never scheduled, so no snapshots 
 | NSE quote JSON shape (depth, total buy/sell) | iNAV snapshots | OPEN — reader written against assumed shape (D17) |
 | AMFI NAV rows on US holidays per AMC | NAV alignment | OPEN — Mirae has none, Motilal carries forward (D22) |
 | NIFTYBEES band ratio 1.105 on 2024-03-01 | R7/R10 | OPEN (D22) |
+| Muhurat session times (calendar uses 09:15–15:30) | calendars, nav_known on those days | OPEN (D24) |
+| AMFI NAV missing on Muhurat days the exchange used (e.g. 1 Nov 2024) | nav_t2 band base | OPEN (D24) |

@@ -41,7 +41,8 @@ def test_labor_day_2026_india_open_us_closed():
 
 def test_nse_session_count_2021_to_2026_11_09():
     # Measured with exchange_calendars 4.13.2; guards against silent calendar drift.
-    assert len(cal.sessions("IN", date(2021, 1, 1), date(2026, 11, 9))) == 1441
+    # 1441 library sessions + 6 Diwali Muhurat sessions (2021-2026) from the overrides.
+    assert len(cal.sessions("IN", date(2021, 1, 1), date(2026, 11, 9))) == 1447
 
 
 def test_library_upper_bound_is_read_from_library():
@@ -52,17 +53,29 @@ def test_library_upper_bound_is_read_from_library():
 
 def test_sessions_inclusive_and_ascending():
     days = cal.sessions("IN", date(2026, 11, 6), date(2026, 11, 11))
-    assert days == [date(2026, 11, 6), date(2026, 11, 9), date(2026, 11, 11)]
+    # Sun 8 Nov 2026 was the Diwali Muhurat session; Tue 10 Nov a holiday.
+    assert days == [date(2026, 11, 6), date(2026, 11, 8), date(2026, 11, 9), date(2026, 11, 11)]
 
 
 # ---- previous / next -----------------------------------------------------
 def test_previous_and_next_across_weekend():
-    friday, monday = date(2026, 11, 6), date(2026, 11, 9)
+    friday, monday = date(2026, 10, 30), date(2026, 11, 2)
     assert cal.previous_session("IN", monday) == friday
     assert cal.next_session("IN", friday) == monday
     # works from a non-session day too
-    assert cal.previous_session("IN", date(2026, 11, 8)) == friday
-    assert cal.next_session("IN", date(2026, 11, 7)) == monday
+    assert cal.previous_session("IN", date(2026, 11, 1)) == friday
+    assert cal.next_session("IN", date(2026, 10, 31)) == monday
+
+
+def test_muhurat_sunday_is_a_session():
+    # NSE's 9 Nov 2026 PREV_CLOSE and the band in the 8 Nov security master are
+    # based on the Sunday 8 Nov Muhurat close (DECISIONS D24).
+    assert cal.is_session("IN", date(2026, 11, 8))
+    assert cal.previous_session("IN", date(2026, 11, 9)) == date(2026, 11, 8)
+    assert cal.next_session("IN", date(2026, 11, 6)) == date(2026, 11, 8)
+    # Band for Mon 4 Nov 2024 = 1.2 x NAV(31 Oct): T-2 counted Muhurat Fri 1 Nov.
+    t = date(2024, 11, 4)
+    assert cal.previous_session("IN", cal.previous_session("IN", t)) == date(2024, 10, 31)
 
 
 def test_previous_and_next_across_diwali_holiday():
@@ -85,7 +98,8 @@ def test_last_session_on_or_before():
 def test_t_minus_2_example():
     # T-2 for the price-band base: two Indian trading days before 2026-11-11.
     t = date(2026, 11, 11)
-    assert cal.previous_session("IN", cal.previous_session("IN", t)) == date(2026, 11, 6)
+    # 11 Nov -> 9 Nov -> Sun 8 Nov (Muhurat session; 10 Nov was a holiday).
+    assert cal.previous_session("IN", cal.previous_session("IN", t)) == date(2026, 11, 8)
 
 
 # ---- open / close times --------------------------------------------------
@@ -105,7 +119,7 @@ def test_market_close_non_session_raises():
     with pytest.raises(ValueError, match="not a IN trading session"):
         cal.market_close("IN", date(2026, 11, 10))
     with pytest.raises(ValueError):
-        cal.market_open("IN", date(2026, 11, 8))  # Sunday
+        cal.market_open("IN", date(2026, 11, 1))  # Sunday
 
 
 def test_us_regular_and_early_close_in_new_york_time():
@@ -212,10 +226,18 @@ def test_holiday_listed_under_wrong_year_is_rejected(tmp_path: Path):
         cal.load_nse_overrides(path)
 
 
-def test_real_overrides_file_loads_and_starts_empty():
+def test_real_overrides_file_loads_with_muhurat_sessions():
     ov = cal.load_nse_overrides()
     assert ov.extra_holidays == ()
-    assert ov.extra_sessions == ()
+    assert [s.date for s in ov.extra_sessions] == [
+        date(2021, 11, 4),
+        date(2022, 10, 24),
+        date(2023, 11, 12),
+        date(2024, 11, 1),
+        date(2025, 10, 21),
+        date(2026, 11, 8),
+    ]
+    assert all("Muhurat" in s.reason for s in ov.extra_sessions)
     assert 2027 not in ov.holidays  # must be filled from the NSE circular (VERIFY)
 
 

@@ -270,3 +270,56 @@ def test_fetch_404_propagates_and_stores_nothing(tmp_path):
     assert caught.value.source == "nse_bhavcopy_full"
     assert caught.value.day == DAY
     assert not store.root.exists()
+
+
+def _csv_to_xlsx(csv_bytes: bytes) -> bytes:
+    """Build a minimal Excel workbook with the same cells, the way NSE's 2022-08-08
+    file looks: text in shared strings (leading spaces kept), numbers as values."""
+    import csv as _csv
+    import io as _io
+    import zipfile as _zip
+    from xml.sax.saxutils import escape
+
+    rows = list(_csv.reader(_io.StringIO(csv_bytes.decode("utf-8-sig"))))
+    shared: list[str] = []
+    out_rows = []
+    for r, fields in enumerate(rows, start=1):
+        cells = []
+        for c, text in enumerate(fields):
+            ref = f"{chr(ord('A') + c)}{r}"
+            try:
+                float(text)
+                cells.append(f'<c r="{ref}"><v>{text.strip()}</v></c>')
+            except ValueError:
+                shared.append(text)
+                cells.append(f'<c r="{ref}" t="s"><v>{len(shared) - 1}</v></c>')
+        out_rows.append(f'<row r="{r}">{"".join(cells)}</row>')
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    sheet = f"<worksheet {ns}><sheetData>{''.join(out_rows)}</sheetData></worksheet>"
+    sst = f"<sst {ns}>" + "".join(f"<si><t>{escape(t)}</t></si>" for t in shared) + "</sst>"
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("xl/worksheets/sheet1.xml", sheet)
+        z.writestr("xl/sharedStrings.xml", sst)
+    return buf.getvalue()
+
+
+def test_excel_workbook_served_as_csv_parses_like_csv(raw_2026, df_2026):
+    # NSE served sec_bhavdata_full_08082022.csv as an .xlsx workbook.
+    out = bhav.parse(_csv_to_xlsx(raw_2026), source_file="x.csv")
+    cols = [c for c in df_2026.columns if c != "source_file"]
+    pd.testing.assert_frame_equal(
+        out[cols].reset_index(drop=True), df_2026[cols].reset_index(drop=True)
+    )
+
+
+def test_zip_that_is_not_a_workbook_fails_loudly():
+    import io as _io
+    import zipfile as _zip
+
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w") as z:
+        z.writestr("data.txt", "x")
+    with pytest.raises(ValueError, match="not an Excel workbook"):
+        bhav.parse(buf.getvalue(), source_file="x.csv")

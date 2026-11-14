@@ -240,6 +240,11 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
         elif key == AMFI_HISTORY:
             try:
                 start = calendars.previous_session("IN", day)
+                # Skip weekend special sessions (Diwali Muhurat on a Sunday, D24):
+                # overseas NAVs are dated by the last regular weekday, so the
+                # window must reach back to it or Friday's late NAV is missed.
+                while start.weekday() >= 5:
+                    start = calendars.previous_session("IN", start)
             except ValueError:
                 start = day
             units.append(_amfi_history_unit(start, day))
