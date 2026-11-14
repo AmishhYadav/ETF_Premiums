@@ -33,8 +33,23 @@ regimes:
       equity: {initial_pct: 20, step_pct: 0, max_widenings: 0}
       gold:   {initial_pct: 20, step_pct: 0, max_widenings: 0}
       silver: {initial_pct: 20, step_pct: 0, max_widenings: 0}
+    # What NSE used when the fund published NO NAV dated exactly T-2 (a US or Hong
+    # Kong holiday, a Saturday special session, the Muhurat session). Read back from
+    # NSE's official bands (D38): through 9 Oct 2025, 102 of 103 such bands were
+    # centred on the previous session's closing price (exception: MAHKTECH
+    # 3 Jan 2025); from 24 Oct 2025 all 52 such bands were centred on the latest
+    # NAV dated before T-2. No such day fell between 10 and 23 Oct, so the exact
+    # switch date is unknown.
+    missing_nav_fallback:
+      - end: 2025-10-23
+        use: prev_close
+        note: "last observed 2025-10-09; switch date between 10 and 24 Oct 2025 is VERIFY"
+      - start: 2025-10-24
+        use: latest_nav
+        note: "first observed 2025-10-24"
     verify:
       - start    # date the T-2 NAV base began is unknown; earlier regime unknown
+      - missing_nav_fallback   # switch date (10-24 Oct 2025) and the reason are unconfirmed
 
   - name: prev_close
     start: 2026-09-07        # 5-6 Sep 2026 are a weekend, so no regime covers them
@@ -113,15 +128,36 @@ regimes:
 # Smallest price step on the exchange (rupees).
 tick_size: 0.01
 
-# Band limits are snapped to the tick: the low limit is rounded UP and the high
-# limit DOWN, so a limit never lies outside the true percentage band.
-# Observed in official NSE data on 2026-11-09: base 229.67 gives 206.71 - 252.63
-# (229.67 x 0.9 = 206.703 -> 206.71 ; 229.67 x 1.1 = 252.637 -> 252.63).
+# Rounding to the tick (D38), read back from 7,668 official NSE bands (Feb 2024 -
+# Sep 2026) plus every band since 7 Sep 2026:
+#   1. The base is first rounded to the NEAREST paisa: NAV 78.8640 -> 78.86. A
+#      closing price is already on the grid, so this only matters for NAV bases.
+#   2. The high limit is rounded DOWN. The low limit is rounded UP from the
+#      session of 9 Dec 2025 and was rounded DOWN before (all 12 ETFs changed on
+#      the same day).
+# Examples: 9 Nov 2026, base 229.67: 206.703 -> 206.71 (up), 252.637 -> 252.63.
+#           7 Feb 2024, NAV 78.8640 -> 78.86: 63.088 -> 63.08 (down), 94.632 -> 94.63.
 rounding:
+  base: nearest
   band_low: up
   band_high: down
-  verify:
-    - rounding   # one observed day only
+  history:
+    - end: 2025-12-08
+      band_low: down
+      note: "low limit rounded down until the session of 8 Dec 2025 (D38)"
+
+# Sessions with their own fixed band (every asset class, no widening). The base is
+# what the regime in force uses. NSE's Saturday disaster-recovery test sessions had
+# +/-5% (D38): e.g. BANKBEES 2 Mar 2024, NAV(29 Feb) 470.0147 -> 470.01:
+# x 0.95 = 446.5095 -> 446.50, x 1.05 = 493.5105 -> 493.51 = NSE's band. All 12 ETFs
+# match on both days. (This is why NIFTYBEES' band for 2 Mar 2024 has ratio 1.105.)
+special_sessions:
+  - date: 2024-03-02
+    pct: 5
+    reason: "NSE disaster-recovery test session (Saturday); all 12 official bands = +/-5% of NAV(T-2)"
+  - date: 2024-05-18
+    pct: 5
+    reason: "NSE disaster-recovery test session (Saturday); all 12 official bands = +/-5% of NAV(T-2)"
 
 # A close within this fraction (0.001 = 0.1%) of a band limit counts as "at the limit".
 at_band_tolerance: 0.001

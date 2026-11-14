@@ -17,16 +17,32 @@ Why this matters for the research: with a NAV base the price can never run far
 above NAV, so a high premium is "cut off" (censored) by the corridor. With a
 price base the corridor moves up with the price and the premium is free.
 
-Rounding (D5, PRELIMINARY: seen on one day only)
-------------------------------------------------
-Limits sit on the price tick (Rs 0.01). The low limit is rounded UP and the
-high limit DOWN, so a limit never lies outside the true percentage corridor.
-Example seen in official data on 9 Nov 2026: base 229.67 gives
-229.67 x 0.9 = 206.703 -> 206.71 and 229.67 x 1.1 = 252.637 -> 252.63.
-The tick size and rounding direction are read from ``config/rules.yaml``
-(``tick_size``, ``rounding``) and can be changed there. All price arithmetic
-uses ``Decimal`` so 100 x 0.9 never becomes 90.00000000000001 and rounds the
-wrong way.
+Rounding (D38, checked on 7,668 official bands Feb 2024 - Sep 2026)
+------------------------------------------------------------------
+Limits sit on the price tick (Rs 0.01). Two steps:
+
+1. The base is first put on the tick grid, to the NEAREST paisa (half up). A NAV
+   has four decimals (118.2753 -> 118.28); a closing price is already on the grid.
+2. The limits are base x (100 -/+ pct) / 100, rounded to the tick. The high limit
+   is always rounded DOWN. The low limit was rounded DOWN for sessions up to
+   8 Dec 2025 and UP from 9 Dec 2025 (NSE changed it; seen in every ETF at once).
+
+Example (9 Nov 2026): base 229.67 gives 229.67 x 0.9 = 206.703 -> 206.71 and
+229.67 x 1.1 = 252.637 -> 252.63. Example (7 Feb 2024): NAV 78.8640 -> base 78.86;
+78.86 x 0.8 = 63.088 -> 63.08 (down, old rule); 78.86 x 1.2 = 94.632 -> 94.63.
+The tick size and rounding rules (with their dates) are read from
+``config/rules.yaml`` (``tick_size``, ``rounding``). All price arithmetic uses
+``Decimal`` so 100 x 0.9 never becomes 90.00000000000001 and rounds the wrong way.
+
+Special sessions and missing NAVs (D38)
+---------------------------------------
+* NSE's Saturday disaster-recovery test sessions (2 Mar and 18 May 2024) had a
+  fixed +/-5% band around the usual base: ``special_sessions`` in rules.yaml.
+* ``nav_t2``: when the fund published no NAV dated exactly T-2 (a US or Hong Kong
+  holiday, a Saturday special session, the Muhurat session), the exchange used the
+  previous close until Oct 2025 and the latest earlier NAV after that:
+  ``missing_nav_fallback`` in rules.yaml. ``band_base_kind`` then says
+  ``prev_close``.
 
 Which base goes in (the caller's job)
 -------------------------------------
@@ -107,14 +123,20 @@ def band_limits(
     tick: float | Decimal,
     low_mode: RoundMode,
     high_mode: RoundMode,
+    base_mode: RoundMode | Literal["none"] = "none",
 ) -> tuple[Decimal, Decimal]:
     """Low and high limit for a corridor of +/-``pct`` percent around ``base``.
 
     Hand example: base 229.67, pct 10 -> low 229.67 x 90 / 100 = 206.703, rounded
     up to the tick = 206.71; high 229.67 x 110 / 100 = 252.637, rounded down =
     252.63. The low limit never goes below 0.
+
+    ``base_mode`` first puts the base on the tick grid ("none" = use as given):
+    NAV 78.8640 with ``nearest`` -> 78.86.
     """
     b, p, t = _dec(base), _dec(pct), _dec(tick)
+    if base_mode != "none":
+        b = snap_to_tick(b, t, base_mode)
     low = snap_to_tick(b * (Decimal(100) - p) / Decimal(100), t, low_mode)
     high = snap_to_tick(b * (Decimal(100) + p) / Decimal(100), t, high_mode)
     return max(low, Decimal(0)), high
@@ -156,20 +178,41 @@ def _level_pct(spec: BandSpec, level: int) -> Decimal:
 
 
 def limits_at_level(
-    base: float | Decimal, spec: BandSpec, level: int, rules: BandRules
+    base: float | Decimal,
+    spec: BandSpec,
+    level: int,
+    rules: BandRules,
+    session: date | None = None,
 ) -> tuple[Decimal, Decimal]:
-    """Limits after ``level`` widenings (0 = the opening corridor)."""
+    """Limits after ``level`` widenings (0 = the opening corridor).
+
+    ``session`` picks the rounding rule in force that day (None = the current rule).
+    """
     if level < 0:
         raise ValueError("level must be >= 0")
     if spec.max_widenings is not None and level > spec.max_widenings:
         raise ValueError(f"level {level} exceeds max_widenings {spec.max_widenings}")
+    base_mode, low_mode, high_mode = rules.rounding.modes_for(session)
     return band_limits(
         base,
         _level_pct(spec, level),
         tick=rules.tick_size,
-        low_mode=rules.rounding.band_low,
-        high_mode=rules.rounding.band_high,
+        low_mode=low_mode,  # type: ignore[arg-type]
+        high_mode=high_mode,  # type: ignore[arg-type]
+        base_mode=base_mode,  # type: ignore[arg-type]
     )
+
+
+def band_spec_for(session: date, asset_class: str, rules: BandRules) -> BandSpec:
+    """Band shape on ``session``: the regime's, unless the day is a special session.
+
+    A special session (e.g. the 2 Mar 2024 disaster-recovery test) has a fixed
+    +/-``pct`` band for every asset class and no widening.
+    """
+    special = rules.special_session(session)
+    if special is not None:
+        return BandSpec(initial_pct=special.pct, step_pct=0, max_widenings=0)
+    return rules.regime_for(session).band_spec(asset_class)
 
 
 def pick_base(
@@ -197,32 +240,55 @@ def compute_band(
     nav_t2: float | None = None,
     prev_close: float | None = None,
     nav_t1: float | None = None,
+    nav_t2_exact: bool | None = None,
 ) -> Band:
     """Initial and maximum corridor for ``session``.
 
-    Worked examples (all hand computed, tick 0.01, low up / high down):
+    ``nav_t2_exact`` (``nav_t2`` regime only): False when the fund published no NAV dated
+    exactly T-2 and ``nav_t2`` is an older NAV. The regime's ``missing_nav_fallback`` then
+    decides: ``prev_close`` swaps the base for the previous close (``base_kind`` becomes
+    ``prev_close``), ``latest_nav`` keeps the older NAV. None/True = no fallback.
 
-    * 9 Nov 2026 file, base 229.67, equity ``prev_close``: initial
-      206.71-252.63; maximum (+/-20%): 183.74-275.60 (229.67 x 0.8 = 183.736 up
-      to 183.74; 229.67 x 1.2 = 275.604 down to 275.60).
-    * ``nav_t2`` NAV 118.2753: 118.2753 x 1.2 = 141.93036 -> high 141.93 (the
-      MONQ50 limit on 4 Sep 2026); low 94.62024 -> 94.63.
+    Worked examples (all hand computed, tick 0.01):
+
+    * 9 Nov 2026 file, base 229.67, equity ``prev_close`` (low up / high down):
+      initial 206.71-252.63; maximum (+/-20%): 183.74-275.60 (229.67 x 0.8 = 183.736
+      up to 183.74; 229.67 x 1.2 = 275.604 down to 275.60).
+    * ``nav_t2`` NAV 118.2753 on 4 Sep 2026: base 118.28; 118.28 x 1.2 = 141.936 ->
+      high 141.93 (the MONQ50 limit); 118.28 x 0.8 = 94.624 -> low 94.63 (up).
+    * ``nav_t2`` NAV 78.8640 on 7 Feb 2024 (low still rounded down): base 78.86 ->
+      63.08-94.63 (NSE's MAFANG band).
+    * Special session 2 Mar 2024, NAV 470.0147: base 470.01 x 0.95 = 446.5095 -> 446.50;
+      x 1.05 = 493.5105 -> 493.51 (NSE's BANKBEES band).
     * Gold, base 100: initial 94.00-106.00, no maximum.
     """
     regime = rules.regime_for(session)
-    base = pick_base(regime, nav_t2=nav_t2, prev_close=prev_close, nav_t1=nav_t1)
-    spec = regime.band_spec(asset_class)
-    low0, high0 = limits_at_level(base, spec, 0, rules)
+    base_kind = regime.base
+    if (
+        regime.base == "nav_t2"
+        and nav_t2_exact is False
+        and regime.missing_nav_rule(session) == "prev_close"
+    ):
+        base_kind = "prev_close"
+    supplied = {"nav_t2": nav_t2, "prev_close": prev_close, "nav_t1": nav_t1}
+    value = supplied[base_kind]
+    if _missing(value):
+        raise MissingBaseError(f"regime {regime.name} needs base {base_kind!r} but it is missing")
+    if float(value) <= 0:  # type: ignore[arg-type]
+        raise ValueError(f"base {base_kind} must be positive, got {value!r}")
+    base = float(value)  # type: ignore[arg-type]
+    spec = band_spec_for(session, asset_class, rules)
+    low0, high0 = limits_at_level(base, spec, 0, rules, session)
     if spec.max_widenings is None:
         # Gold/silver: widening steps have no cap.
         low_max, high_max, uncapped = 0.0, math.inf, True
     else:
-        lo, hi = limits_at_level(base, spec, spec.max_widenings, rules)
+        lo, hi = limits_at_level(base, spec, spec.max_widenings, rules, session)
         low_max, high_max, uncapped = float(lo), float(hi), False
     return Band(
         session=session,
         regime=regime.name,
-        base_kind=regime.base,
+        base_kind=base_kind,
         base_price=base,
         asset_class=asset_class,
         initial_pct=spec.initial_pct,
@@ -247,6 +313,7 @@ def _minimum_level(
     *,
     side: Literal["upper", "lower"],
     extreme: Decimal,
+    session: date | None = None,
 ) -> tuple[int, Decimal]:
     """Smallest widening level whose limit has not been crossed by ``extreme``.
 
@@ -259,7 +326,7 @@ def _minimum_level(
         top = 0
     level, limit = 0, Decimal(0)
     for level in range(top + 1):
-        low_l, high_l = limits_at_level(base, spec, level, rules)
+        low_l, high_l = limits_at_level(base, spec, level, rules, session)
         limit = high_l if side == "upper" else low_l
         if (side == "upper" and limit >= extreme) or (side == "lower" and limit <= extreme):
             break
@@ -308,7 +375,7 @@ def band_flags(
     """
     tol = rules.at_band_tolerance if at_tolerance is None else at_tolerance
     slack = _dec(band.tick) * touch_ticks
-    spec = rules.regime_for(band.session).band_spec(band.asset_class)
+    spec = band_spec_for(band.session, band.asset_class, rules)
     base = band.base_price
 
     out: dict[str, bool | int | None] = {}
@@ -354,7 +421,9 @@ def band_flags(
             out[name_t] = ext <= initial + slack
             out[name_m] = (not band.uncapped) and ext <= _dec(band.low_max) + slack
             out[name_w] = ext < initial
-        level, limit = _minimum_level(base, spec, rules, side=side, extreme=ext)
+        level, limit = _minimum_level(
+            base, spec, rules, side=side, extreme=ext, session=band.session
+        )
         out[name_k] = level
         for key, price in ((name_l, last), (name_c, close)):
             if _missing(price):
@@ -499,6 +568,22 @@ FLAG_COLUMNS = (
 )
 
 
+def _as_day(value: Any) -> date | None:
+    if _missing(value):
+        return None
+    return value.date() if isinstance(value, pd.Timestamp) else value
+
+
+def _nav_t2_exact(rec: dict[str, Any]) -> bool | None:
+    """False if the NAV behind ``nav_t2`` is not dated T-2 (or there is none); None if unknown."""
+    if "nav_t2_date" not in rec or "nav_t2_nav_date" not in rec:
+        return None
+    t2, used = _as_day(rec["nav_t2_date"]), _as_day(rec["nav_t2_nav_date"])
+    if t2 is None:
+        return None
+    return used == t2
+
+
 def compute_band_frame(
     df: pd.DataFrame,
     rules: BandRules,
@@ -509,6 +594,8 @@ def compute_band_frame(
     Required columns: ``symbol``, ``date`` (python date), and any of ``nav_t2``,
     ``prev_close``, ``nav_t1`` (the one the regime needs must be non-null on that row).
     Optional (flags are null without them): ``high``, ``low``, ``ltp``, ``close``.
+    Optional ``nav_t2_date`` and ``nav_t2_nav_date``: when both are present and differ, no
+    NAV was dated exactly T-2 and the regime's ``missing_nav_fallback`` applies.
     A row whose base is missing gets null band columns; it is not dropped.
     """
     for col in ("symbol", "date"):
@@ -528,6 +615,7 @@ def compute_band_frame(
                 nav_t2=rec.get("nav_t2"),
                 prev_close=rec.get("prev_close"),
                 nav_t1=rec.get("nav_t1"),
+                nav_t2_exact=_nav_t2_exact(rec),
             )
         except MissingBaseError:
             rows.append(out)

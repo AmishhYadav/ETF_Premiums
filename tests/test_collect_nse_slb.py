@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from etfp.collect import nse_slb as slb
-from etfp.http import PoliteClient, SourceNotFoundError
+from etfp.http import PoliteClient, SourceNotFoundError, SourceUnavailableError
 from etfp.rawstore import RawStore
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nse_slb"
@@ -228,4 +228,16 @@ def test_fetch_404_and_web_page_store_nothing(tmp_path):
             store,
             DAY,
         )
+    assert not store.root.exists()
+
+
+def test_fetch_truncated_file_stores_nothing(tmp_path):
+    # Real case (16 Sep 2021 eligible list): HTTP 200 but the body stopped mid-line,
+    # with no final newline. It must not be stored, so the next run downloads it again.
+    full = raw("SLB_ELG_SEC_12112026.csv")
+    assert full.endswith(b"\n")
+    cut = full[: len(full) // 2].rstrip(b"\n")
+    store = RawStore(tmp_path / "raw")
+    with pytest.raises(SourceUnavailableError, match="truncated"):
+        slb.fetch_eligible(make_client(lambda r: httpx.Response(200, content=cut)), store, DAY)
     assert not store.root.exists()

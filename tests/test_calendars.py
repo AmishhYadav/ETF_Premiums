@@ -42,8 +42,9 @@ def test_labor_day_2026_india_open_us_closed():
 def test_nse_session_count_2021_to_2026_11_09():
     # Measured with exchange_calendars 4.13.2; guards against silent calendar drift.
     # 1441 library sessions + 6 Diwali Muhurat sessions (2021-2026) + 3 special Saturday
-    # sessions in 2024 (20 Jan, 2 Mar, 18 May) from the overrides.
-    assert len(cal.sessions("IN", date(2021, 1, 1), date(2026, 11, 9))) == 1450
+    # sessions in 2024 (20 Jan, 2 Mar, 18 May) + 2 Union Budget sessions (1 Feb 2025,
+    # 1 Feb 2026, D38) from the overrides.
+    assert len(cal.sessions("IN", date(2021, 1, 1), date(2026, 11, 9))) == 1452
 
 
 def test_library_upper_bound_is_read_from_library():
@@ -238,11 +239,25 @@ def test_real_overrides_file_loads_with_muhurat_sessions():
         date(2024, 3, 2),
         date(2024, 5, 18),
         date(2024, 11, 1),
+        date(2025, 2, 1),
         date(2025, 10, 21),
+        date(2026, 2, 1),
         date(2026, 11, 8),
     ]
-    assert all(("Muhurat" in s.reason) or ("Saturday" in s.reason) for s in ov.extra_sessions)
+    assert all(
+        ("Muhurat" in s.reason) or ("Saturday" in s.reason) or ("Budget" in s.reason)
+        for s in ov.extra_sessions
+    )
     assert 2027 not in ov.holidays  # must be filled from the NSE circular (VERIFY)
+
+
+def test_budget_sessions_are_sessions_and_shift_t2():
+    # Union Budget days 1 Feb 2025 (Sat) and 1 Feb 2026 (Sun) were NSE sessions (D38),
+    # so the session before Mon 3 Feb 2025 is Sat 1 Feb, not Fri 31 Jan.
+    assert cal.is_session("IN", date(2025, 2, 1))
+    assert cal.is_session("IN", date(2026, 2, 1))
+    assert cal.previous_session("IN", date(2025, 2, 3)) == date(2025, 2, 1)
+    assert cal.previous_session("IN", date(2026, 2, 2)) == date(2026, 2, 1)
 
 
 # ---- range checks --------------------------------------------------------

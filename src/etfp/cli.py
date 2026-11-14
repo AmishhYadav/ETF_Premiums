@@ -245,6 +245,75 @@ def collect_nse_quote(
         raise typer.Exit(1)
 
 
+@collect_app.command("ibja")
+def collect_ibja() -> None:
+    """Save today's IBJA gold/silver rate page (domestic bullion reference price).
+
+    One request. The page carries ~4 months of PM rates, so a daily run keeps the
+    history going; it is not yet part of `etfp run daily`.
+    """
+    from etfp.collect import ibja_rates
+    from etfp.http import SourceError
+
+    _configure_logging()
+    store = RawStore(paths.raw_dir())
+    with _build_client(load_collect_settings()) as client:
+        try:
+            record = ibja_rates.fetch(client, store, today_ist())
+        except SourceError as exc:
+            typer.echo(f"FAILED {type(exc).__name__}: {exc}", err=True)
+            raise typer.Exit(1) from None
+    typer.echo(f"{'EXISTS' if record.duplicate else 'OK'} {record.relpath} {record.size_bytes}")
+
+
+@collect_app.command("notices")
+def collect_notices(
+    from_text: Annotated[
+        str | None,
+        typer.Option("--from", help="Backfill from this day, YYYY-MM-DD (monthly windows)."),
+    ] = None,
+    to_text: Annotated[
+        str | None, typer.Option("--to", help="Last day, YYYY-MM-DD (default: today in India).")
+    ] = None,
+) -> None:
+    """Save SEBI and NSE notice listings (notice reader; keyword guesses happen in build).
+
+    Without --from: the last 7 days of SEBI's Legal listing and NSE's circulars, plus
+    SEBI's RSS feed, downloaded again even if saved earlier today (new notices appear
+    during the day; identical bytes are not stored twice). With --from: one window per
+    calendar month, skipping windows already saved, so an interrupted backfill resumes.
+    """
+    _configure_logging()
+    today = today_ist()
+    end = _parse_day(to_text, "--to") if to_text else today
+    if from_text:
+        start = _parse_day(from_text, "--from")
+        try:
+            windows = jobs.notice_month_windows(start, end)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        units = [u for a, b in windows for u in jobs.notice_window_units(a, b)]
+        # one wide request set for SEBI's "Archive" view (circulars not in the Active listing)
+        units.append(jobs.notice_archive_unit(start, end))
+        force = False
+    else:
+        plan = jobs.plan_daily(end, [jobs.NOTICES], now=now_ist())
+        for note in plan.notes:
+            typer.echo(f"NOTE        {note}")
+        units, force = plan.units, True
+    store = RawStore(paths.raw_dir())
+    with _build_bulk_client(load_collect_settings()) as client:
+        outcomes = jobs.run_units(
+            units,
+            client,
+            store,
+            force=force,
+            on_outcome=lambda o: _print_outcome(o, quiet_skips=False),
+        )
+    if _print_summary(outcomes):
+        raise typer.Exit(1)
+
+
 @collect_app.command("daily")
 def collect_daily(
     day_text: Annotated[
@@ -440,6 +509,35 @@ def export_research_cmd() -> None:
     """Write exports/research/<date>/ (parquet, schema, manifest) and LATEST.txt."""
     _configure_logging()
     _export_research()
+
+
+@export_app.command("dataset")
+def export_dataset_cmd() -> None:
+    """Write the open dataset to exports/dataset/<date>/ (local only; never uploads).
+
+    Only tables and columns allowed by config/dataset.yaml are written; anything derived
+    from Bloomberg or other licensed data is refused (DECISIONS D34).
+    """
+    from etfp.export_dataset import DatasetLicenceError, export_dataset
+    from etfp.store import Store
+
+    _configure_logging()
+    try:
+        folder = export_dataset(Store())
+    except DatasetLicenceError as exc:
+        typer.echo(f"DATASET EXPORT REFUSED: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"dataset export: {folder}")
+
+
+@export_app.command("valve-status")
+def export_valve_status_cmd() -> None:
+    """Regenerate docs/VALVE_STATUS.md (valve status per ETF-month) from the last build."""
+    from etfp.export import write_valve_status
+    from etfp.store import Store
+
+    _configure_logging()
+    typer.echo(f"valve status: {write_valve_status(Store())}")
 
 
 @app.command()

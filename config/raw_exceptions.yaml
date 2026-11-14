@@ -15,3 +15,11 @@ skip:
       session did happen: the 8 Nov 2021 file gives MON100 PREV_CLOSE 120.09,
       not the 3 Nov close 117.54. True Muhurat prices for 2021 are not in this
       archive (DECISIONS D32).
+  - path: nse_slb_eligible/2021-09-16/SLB_ELG_SEC_16092021.csv
+    reason: >-
+      NSE's archive serves this eligible list cut off mid-line: 290,816 bytes
+      (exactly 71 x 4 KiB), last line "11846" with no fields and no final
+      newline, against ~14,500 lines on 15 and 17 Sep 2021. A forced re-download
+      on 14 Nov 2026 returned the same 290,816 bytes, so the defect is at the
+      source, not in our transfer. Every other SLB file ends with a newline.
+      The day is a gap in slb_eligible (DECISIONS D32 follow-up).

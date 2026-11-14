@@ -163,6 +163,27 @@ def test_a_listed_row_without_normal_eligibility_e_does_not_count(tmp_path: Path
     assert bool(q["eligible"]) and q["series_count"] == 1
 
 
+def test_slb_file_listed_in_raw_exceptions_is_skipped_with_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A proved source defect (cut-off file) is listed in config/raw_exceptions.yaml:
+    # the cleaner skips it and warns instead of stopping the whole build.
+    root = empty_root(tmp_path)
+    good = (
+        "Sr.No.,Symbol,Series,Normal Eligibility,Recall Eligibility,Repay Eligibility,Market Type\n"
+        "1,MONQ50,XD,E,E,E,N\n"
+    )
+    d1, d2 = date(2021, 9, 15), date(2021, 9, 16)
+    save_raw(root, "nse_slb_eligible", d1, "SLB_ELG_SEC_15092021.csv", good.encode())
+    save_raw(root, "nse_slb_eligible", d2, "SLB_ELG_SEC_16092021.csv", b"Sr.No.,Symbol\n11846")
+    skipped = "nse_slb_eligible/2021-09-16/SLB_ELG_SEC_16092021.csv"
+    monkeypatch.setattr(slb, "skipped_raw_files", lambda: {skipped: "cut off at source"})
+    with caplog.at_level(logging.WARNING, logger="etfp.clean"):
+        out = slb.build_eligible(ctx_for(root))
+    assert set(out["date"]) == {d1}
+    assert any(skipped in r.getMessage() for r in caplog.records)
+
+
 def test_slb_eligible_without_raw_files_is_empty(tmp_path: Path) -> None:
     out = slb.build_eligible(ctx_for(empty_root(tmp_path)))
     assert out.empty and list(out.columns) == slb.ELIGIBLE_COLUMNS

@@ -60,6 +60,14 @@ RAW_FILES: list[tuple[str, date, str, str]] = [
      "nse_slb/SLBM_BC_04012021.DAT"),
     ("nse_slb_bhavcopy", date(2026, 11, 12), "SLBM_BC_12112026.DAT",
      "nse_slb/SLBM_BC_12112026.DAT"),
+    # IBJA domestic gold/silver rates (bullion reference price)
+    ("ibja_rates", date(2026, 11, 14), "ibjarates_home.html",
+     "ibja_rates/ibjarates_home_20261114.html"),
+    # notice reader: SEBI Legal listing and NSE circulars (keyword-tagged notices)
+    ("sebi_listing", date(2026, 9, 5), "sebi_legal_20260825_20260905_p1.html",
+     "notices/sebi_legal_20260825_20260905_p1.html"),
+    ("nse_circulars", date(2026, 9, 1), "nse_circulars_20260901_20260901.json",
+     "notices/nse_circulars_20260901_20260901.json"),
 ]  # fmt: skip
 
 

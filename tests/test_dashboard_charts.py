@@ -82,3 +82,34 @@ def test_level_and_intraday_figures_build() -> None:
     assert [t.name for t in fig.data] == ["Last price", "iNAV", "Premium over iNAV (%)"]
     assert list(fig.data[2].y) == pytest.approx([20.0, 30.0])
     fig.to_dict()  # must be serialisable (this is what Streamlit sends to the browser)
+
+
+def test_x_april_figure_draws_log_values_zero_line_and_percent_hover() -> None:
+    series = pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B"],
+            "date": [D1, D2, D2],
+            "value": [0.0, np.log(1.1), np.log(0.75)],
+            "close_vs_cap": [0.0, 0.10, -0.25],
+        }
+    )
+    marks = [Marker(D2, "caution: BSE caution", False, "event")]
+    fig = charts.x_april_figure(series, label="x_april", markers=marks)
+    assert [t.name for t in fig.data] == ["A", "B"]
+    assert list(fig.data[0].y) == pytest.approx([0.0, np.log(1.1)])  # not scaled to percent
+    assert list(fig.data[0].customdata) == pytest.approx([0.0, 10.0])
+    assert list(fig.data[1].customdata) == pytest.approx([-25.0])
+    zero = [s for s in fig.layout.shapes if s.yref != "paper"]
+    assert len(zero) == 1 and zero[0].y0 == 0 and zero[0].y1 == 0
+    events = [s for s in fig.layout.shapes if s.yref == "paper"]
+    assert len(events) == 1 and events[0].line.dash == "dot"
+
+
+def test_event_markers_are_drawn_dotted_at_the_foot() -> None:
+    series = pd.DataFrame({"symbol": ["A"], "date": [D1], "value": [0.1]})
+    marks = [Marker(D1, "regime", False), Marker(D2, "event", False, "event")]
+    fig = charts.premium_figure(series, label="P", log_measure=False, markers=marks)
+    dashes = [s.line.dash for s in fig.layout.shapes if s.yref == "paper"]
+    assert dashes == ["solid", "dot"]
+    notes = {a.text: a.y for a in fig.layout.annotations}
+    assert notes["regime"] == 1 and notes["event"] == 0

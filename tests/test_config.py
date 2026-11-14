@@ -184,7 +184,7 @@ def test_etf_extras_futures_units_tracking():
     }
     assert u.by_symbol("HNGSNGBEES").creation_unit_size == 25000
     assert u.by_symbol("MAHKTECH").creation_unit_size == 800000
-    assert "creation_unit_size" in u.by_symbol("MAHKTECH").verify
+    assert "creation_unit_size" not in u.by_symbol("MAHKTECH").verify  # confirmed (D36)
     assert u.by_symbol("GOLDBEES").tracked is False
     assert u.by_symbol("GOLDBEES").asset_class == "gold"
     assert u.by_symbol("SILVERBEES").asset_class == "silver"
@@ -473,11 +473,11 @@ def test_creation_unit_sizes_from_scheme_documents():
     u = load_etfs()
     assert u.by_symbol("MONQ50").creation_unit_size == 600_000
     assert u.by_symbol("MON100").creation_unit_size == 250_000
-    for symbol in ("MASPTOP50", "MAFANG"):  # not read from the Mirae factsheets yet
-        etf = u.by_symbol(symbol)
-        assert etf.creation_unit_size is None
-        assert "creation_unit_size" in etf.verify
-    for symbol in ("MONQ50", "MON100"):  # confirmed: not on the to-check list
+    # Mirae SIDs (D36): 5,50,000 and 2,00,000 units; every IssdCptl change since
+    # Feb 2024 is a whole multiple of these (D33).
+    assert u.by_symbol("MASPTOP50").creation_unit_size == 550_000
+    assert u.by_symbol("MAFANG").creation_unit_size == 200_000
+    for symbol in ("MONQ50", "MON100", "MASPTOP50", "MAFANG", "MAHKTECH"):  # confirmed
         assert "creation_unit_size" not in u.by_symbol(symbol).verify
 
 

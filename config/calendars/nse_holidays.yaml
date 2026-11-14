@@ -38,7 +38,9 @@ extra_sessions:
   - {date: 2024-03-02, reason: "Special Saturday session (disaster-recovery test, narrow bands); bhavcopy + security master HTTP 200, D32"}
   - {date: 2024-05-18, reason: "Special Saturday session (disaster-recovery test, narrow bands); bhavcopy + security master HTTP 200, D32"}
   - {date: 2024-11-01, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
+  - {date: 2025-02-01, reason: "Union Budget special session, Saturday. Evidence (D38): 3 Feb 2025 PREV_CLOSE differs from the 31 Jan close (NIFTYBEES 262.13 vs 263.00); AMFI NAVs dated 1 Feb for domestic funds; the security master dated 31 Jan matches +/-20% of NAV(30 Jan) exactly for all 12 ETFs. Raw files for this date not yet downloaded"}
   - {date: 2025-10-21, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
+  - {date: 2026-02-01, reason: "Union Budget special session, Sunday. Evidence (D38): 2 Feb 2026 PREV_CLOSE differs from the 30 Jan close (NIFTYBEES 282.41 vs 286.73); AMFI NAVs dated 1 Feb for domestic funds; the security master dated 30 Jan matches +/-20% of NAV(29 Jan) exactly for all 12 ETFs. Raw files for this date not yet downloaded"}
   - {date: 2026-11-08, reason: "Diwali Muhurat session, Sunday (UDiFF + security master HTTP 200, D24)"}
 
 # Holidays for years BEYOND the library's recorded range (2027 onwards), as

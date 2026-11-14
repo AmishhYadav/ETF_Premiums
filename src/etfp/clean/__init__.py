@@ -16,6 +16,8 @@ they check ETF symbols against it.
 ``bse_prices`` (R9, BSE daily bhavcopy) and ``slb_eligible`` / ``slb_daily`` (R8, NSE
 securities lending) come last; they read raw folders that may not exist yet (an empty
 table results) and, like the other cleaners, never touch the raw files.
+``bullion_ref_daily`` (IBJA domestic gold/silver rates, the bullion reference price,
+``etfp.collect.ibja_rates``) runs after them the same way.
 
 Tables with no cleaner yet (``underlying_daily``, ``fx_daily``, ``etf_day``) are
 created EMPTY if they do not exist, so readers can query them; an existing one is
@@ -31,6 +33,7 @@ from etfp import paths
 from etfp.clean import (
     band_official,
     bse_prices,
+    bullion_ref,
     china_etf,
     etf_master,
     feeder_nav,
@@ -40,6 +43,7 @@ from etfp.clean import (
     manual_trends,
     manual_units,
     nav_daily,
+    notices,
     prices_daily,
     slb,
     units_daily,
@@ -69,6 +73,8 @@ CLEANERS = (
     ("china_etf_daily", china_etf),
     ("slb_eligible", slb.ELIGIBLE),
     ("slb_daily", slb.DAILY),
+    ("bullion_ref_daily", bullion_ref),
+    ("notices", notices),  # SEBI/NSE notices with keyword guesses (candidates only)
 )
 
 

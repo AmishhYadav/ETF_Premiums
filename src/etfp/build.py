@@ -51,7 +51,12 @@ from etfp.config import (
     load_rules,
     load_trends_terms,
 )
-from etfp.corporate_actions import CorporateActions, adjustment_factor, load_corporate_actions
+from etfp.corporate_actions import (
+    CorporateActions,
+    adjust_values,
+    adjustment_factor,
+    load_corporate_actions,
+)
 from etfp.export import ETF_DAY_COLUMNS, etf_day_schema_registered
 from etfp.features import (
     attention,
@@ -63,6 +68,7 @@ from etfp.features import (
     premiums,
     quality,
     units,
+    valve,  # importing registers the valve_monthly schema
 )
 from etfp.store import Store, coerce, get_schema
 
@@ -575,6 +581,9 @@ def _computed_band_block(etf: Etf, base: pd.DataFrame, cfg: BuildConfig) -> pd.D
             "symbol": base["symbol"],
             "date": base["date"],
             "nav_t2": base["nav_t2"],
+            # Both dates let the band code see "no NAV dated exactly T-2" (D38 fallback).
+            "nav_t2_date": base.get("nav_t2_date"),
+            "nav_t2_nav_date": base.get("nav_t2_nav_date"),
             "prev_close": base["prev_close"],
             "nav_t1": base["nav_t1"],
             "high": base["high"],
@@ -595,6 +604,10 @@ def _computed_band_block(etf: Etf, base: pd.DataFrame, cfg: BuildConfig) -> pd.D
         except ValueError:  # a date no regime covers (not a trading day)
             regimes.append(None)
             kinds.append(None)
+    # The base actually used (D38): prev_close on nav_t2 days with no NAV dated T-2 in
+    # the prev-close-fallback era; the rule's base when no band could be computed.
+    used = framed["band_base_kind"].reset_index(drop=True)
+    kinds = [u if isinstance(u, str) else k for u, k in zip(used, kinds, strict=True)]
     out.insert(0, "band_base_kind", kinds)
     out.insert(0, "regime", regimes)
     return out
@@ -1114,6 +1127,24 @@ def build_events(store: Store, *, universe: EtfUniverse | None = None) -> pd.Dat
     )
 
 
+def build_valve_monthly(store: Store, cfg: BuildConfig) -> pd.DataFrame:
+    """The ``valve_monthly`` table (M5, D33) from units_daily and units_monthly.
+
+    Monthly AUM/NAV units are put on today's unit scale first (a 10:1 split multiplies a
+    pre-split count by 10), so a split is not mistaken for a creation. The daily
+    security-master counts start in 2024, after the only split, and are used as published.
+    """
+    ud = _empty("units_daily", store)
+    um = _empty("units_monthly", store)
+    if len(um):
+        um = um.copy()
+        um["units"] = adjust_values(cfg.actions, um, value="units", kind="units", day="month_end")
+    frame = valve.valve_monthly(
+        ud, um, units.creation_unit_sizes(cfg.universe), [e.symbol for e in cfg.universe.etfs]
+    )
+    return coerce(frame, get_schema(valve.TABLE))
+
+
 def build_all(root: Path | None = None) -> dict[str, Any]:
     """Raw -> clean tables -> ``etf_day``. Returns row counts.
 
@@ -1135,7 +1166,9 @@ def build_all(root: Path | None = None) -> dict[str, Any]:
         "limit_day", limit_days.build_limit_days(store, frame, bloomberg_frame=imported.frame)
     )
     logger.info("limit_day: %d rows", n_ld)
-    return {"clean": counts, "etf_day": n, "limit_day": n_ld}
+    n_vm = store.write_table(valve.TABLE, build_valve_monthly(store, load_config(root)))
+    logger.info("valve_monthly: %d rows", n_vm)
+    return {"clean": counts, "etf_day": n, "limit_day": n_ld, "valve_monthly": n_vm}
 
 
 __all__ = [
@@ -1145,6 +1178,7 @@ __all__ = [
     "build_etf_day",
     "build_events",
     "build_unit_tables",
+    "build_valve_monthly",
     "fair_value_inputs",
     "implied_base_prices",
     "load_config",

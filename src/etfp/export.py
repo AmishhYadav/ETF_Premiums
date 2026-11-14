@@ -49,7 +49,7 @@ from etfp.timeutil import IST, now_ist
 
 logger = logging.getLogger("etfp.export")
 
-SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.5.0"
 SCHEMA_CHANGELOG: list[dict[str, str]] = [
     {
         "version": "1.0.0",
@@ -109,6 +109,41 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "not a publication lag); nav_known_date and nav_publication_lag_days still show "
             "it and dq_nav_stale flags it. Premiums, fv and x_april are then empty "
             "(fv_method no_nav) instead of being computed from an old NAV."
+        ),
+    },
+    {
+        "version": "1.4.0",
+        "date": "2026-11-14",
+        "changes": (
+            "New file only; no existing column changes meaning. valve_monthly.parquet (M5, "
+            "DECISIONS D33): one row per ETF and calendar month from 2021-01 with units at the "
+            "start and end of the month, number of days units rose / fell, net creation units "
+            "and valve_status (open = units rose at least once; closed = data present and units "
+            "never moved; redeeming_only = fell, never rose; unknown = no data or nothing to "
+            "compare with). Daily NSE security-master counts where present (from 2024-02-05), "
+            "else the hand-entered monthly AUM / NAV table with a +-1% threshold, else unknown."
+        ),
+    },
+    {
+        "version": "1.5.0",
+        "date": "2026-11-14",
+        "changes": (
+            "MEANING CHANGES (DECISIONS D38, D39). Computed band: the base NAV is rounded to "
+            "the paisa before the percentage, the lower limit rounds down through 2025-12-08 "
+            "and up from 2025-12-09; special sessions 2024-03-02 and 2024-05-18 use +-5%; when "
+            "no NAV is dated T-2, NSE's fallback is applied (previous close through "
+            "2025-10-23, latest earlier NAV from 2025-10-24). band_base_kind now names the base "
+            "actually used (prev_close on 246 nav_t2-regime rows); band_base_price, "
+            "band_*_initial, band_*_max and band_mismatch follow (pre-Sep-2026 mismatches "
+            "414 -> 20). nav_t2_date can be a non-session NAV day (31 March). Budget sessions "
+            "2025-02-01 and 2026-02-01 are sessions. Look-ahead fix: nav_known_at_close "
+            "(and nav_known_date, prem_nav_known, fv, x_april, every column built on it) "
+            "never uses a NAV dated after t; 43 rows changed, mostly around 31 March. "
+            "Official band columns are unchanged. New files: notices.parquet (D37; SEBI and "
+            "NSE notice listings with keyword tags; relevant = keyword candidate only, never "
+            "a verified event; published_ts is 00:00 IST when published_time_known is False) "
+            "and bullion_ref_daily.parquet (D35; IBJA gold/silver reference rates, INR per "
+            "gram, from Jul 2026)."
         ),
     },
 ]
@@ -242,7 +277,7 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
         "float",
         "Freshest NAV whose underlying market had closed before 15:30 IST on t. For US funds normally the NAV dated t-1.",
         "rupees per unit",
-        "latest NAV d with underlying close(u(d)) <= India close on t",
+        "latest NAV d with d <= t and underlying close(u(d)) <= India close on t",
         _NAV_SRC,
     ),
     "nav_known": _c(
@@ -269,7 +304,7 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
     ),
     "nav_t2_date": _c(
         "date",
-        "Indian trading day two sessions before t (old band base date).",
+        "Day before the previous Indian session (old band base date): normally the session two before t; a NAV the fund dated on a non-session day in between counts as a day (31 March year-end NAV, D38).",
         "date",
         "",
         "calendars",
@@ -459,7 +494,9 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
         source="config/rules.yaml",
     ),
     "band_base_kind": _c(
-        "string", "Base the rules say the band is centred on.", source="config/rules.yaml"
+        "string",
+        "Base the computed band is actually centred on (nav_t2, prev_close, nav_t1). In the nav_t2 regime it is prev_close when the fund published no NAV dated T-2 and NSE fell back to the previous close (through 2025-10-23, D38).",
+        source="config/rules.yaml",
     ),
     "band_base_price": _c(
         "float",
@@ -971,6 +1008,9 @@ COPIED_TABLES = (
     "bse_prices",
     "feeder_nav_daily",
     "china_etf_daily",
+    "valve_monthly",
+    "notices",
+    "bullion_ref_daily",
 )
 """Clean tables copied as they are (their parquet files already have the registered types)."""
 MARKET_HOURS = (time(9, 10), time(15, 35))
@@ -1079,7 +1119,9 @@ def _rows(table: str, df: pd.DataFrame) -> list[dict[str, str]]:
                 "definition": c.doc,
                 "units": "",
                 "formula": "",
-                "source": "clean table; see source_file",
+                "source": "features/valve.py (D33); see source_file"
+                if table == "valve_monthly"
+                else "clean table; see source_file",
             }
             for c in SCHEMAS[table].columns
         ]
@@ -1311,6 +1353,35 @@ def _limit_day_coverage(ld: pd.DataFrame | None) -> dict[str, Any] | None:
     }
 
 
+def write_valve_status(store: Store, out_path: Path | None = None) -> Path:
+    """Regenerate docs/VALVE_STATUS.md from the built ``valve_monthly`` table (M5, D33).
+
+    Uses only the table (no clock, no git), so the same build always gives the same file.
+    """
+    from etfp import build  # lazy, as in export_research (registers the valve schema)
+    from etfp.features import valve
+
+    if not store.has_table(valve.TABLE):
+        raise FileNotFoundError("valve_monthly has not been built; run `etfp build` first")
+    root = build.resolve_root(store)
+    cfg = build.load_config(root)
+    tracked = [e.symbol for e in cfg.universe.etfs if e.tracked]
+    text = valve.valve_status_markdown(store.read_table(valve.TABLE), tracked=tracked)
+    out_path = Path(out_path) if out_path is not None else root / "docs" / "VALVE_STATUS.md"
+    _atomic_text(out_path, text)
+    return out_path
+
+
+def _valve_counts(vm: pd.DataFrame | None) -> dict[str, dict[str, int]] | None:
+    """valve_status counts per symbol (M5), so the research side sees coverage at a glance."""
+    if vm is None:
+        return None
+    return {
+        str(sym): {str(k): int(v) for k, v in g["valve_status"].value_counts().sort_index().items()}
+        for sym, g in vm.groupby("symbol", sort=True)
+    }
+
+
 def _manifest(
     store: Store,
     cfg: Any,
@@ -1398,6 +1469,7 @@ def _manifest(
         "bloomberg_files": bloomberg_files,
         "recorder_gaps": recorder_gaps(frames.get("inav_snapshots", pd.DataFrame())),
         "limit_day": _limit_day_coverage(frames.get("limit_day")),
+        "valve_status_counts_by_symbol": _valve_counts(frames.get("valve_monthly")),
         "creation_unit_sizes_missing": units.missing_creation_unit_sizes(needed, sizes),
         "open_verify_items": parse_open_verify_items(decisions_path),
         "files": files,

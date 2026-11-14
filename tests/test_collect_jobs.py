@@ -40,7 +40,13 @@ class Server:
                 return httpx.Response(code, content=b"nope")
         if "finance.yahoo.com" in url:
             return httpx.Response(200, content=b'{"chart":{"result":[{"meta":{}}],"error":null}}')
-        return httpx.Response(200, content=f"body of {url}".encode())
+        if "/api/circulars" in url:  # notice reader: NSE circulars API
+            return httpx.Response(200, content=b'{"data":[]}')
+        if "getnewslistinfo" in url:  # notice reader: SEBI Legal listing
+            return httpx.Response(200, content=b"<p>0 to 0 of 0 records</p>")
+        if "sebirss.xml" in url:
+            return httpx.Response(200, content=b'<?xml version="1.0"?><rss><channel/></rss>')
+        return httpx.Response(200, content=f"body of {url}\n".encode())  # files end with a newline
 
     def count(self, needle: str) -> int:
         return sum(needle in str(r.url) for r in self.requests)
@@ -126,7 +132,7 @@ def test_amfi_windows_single_day_and_bad_size():
 # -- plan_daily -----------------------------------------------------------------------
 
 
-def test_plan_daily_on_the_day_itself_lists_all_thirteen_files():
+def test_plan_daily_on_the_day_itself_lists_all_sixteen_files():
     plan = jobs.plan_daily(DAY, jobs.DAILY_SOURCES, now=NOW)
     names = [(u.source, u.name) for u in plan.units]
     assert names == [
@@ -144,6 +150,10 @@ def test_plan_daily_on_the_day_itself_lists_all_thirteen_files():
         ("bse_bhavcopy", "BhavCopy_BSE_CM_0_0_0_20261109_F_0000.CSV"),
         ("nse_slb_eligible", "SLB_ELG_SEC_09112026.csv"),
         ("nse_slb_bhavcopy", "SLBM_BC_09112026.DAT"),
+        # notices: 7-day window ending on the day, plus SEBI's RSS (latest only)
+        ("sebi_listing", "sebi_legal_20261102_20261109_p1.html"),
+        ("nse_circulars", "nse_circulars_20261102_20261109.json"),
+        ("sebi_rss", "sebirss.xml"),
     ]
     assert plan.notes == []
     assert all(u.day == DAY for u in plan.units)
@@ -240,9 +250,10 @@ def test_second_run_makes_zero_requests(tmp_path: Path, server: Server):
         first = jobs.run_units(plan.units, client, store)
         n = len(server.requests)
         second = jobs.run_units(plan.units, client, store)
-    assert jobs.summarize(first) == {"fetched": 13, "exists": 0, "unavailable": 0, "failed": 0}
-    assert jobs.summarize(second) == {"fetched": 0, "exists": 13, "unavailable": 0, "failed": 0}
-    assert len(server.requests) == n == 13
+    assert jobs.summarize(first) == {"fetched": 16, "exists": 0, "unavailable": 0, "failed": 0}
+    assert jobs.summarize(second) == {"fetched": 0, "exists": 16, "unavailable": 0, "failed": 0}
+    # 16 files, 17 requests: NSE's circulars API needs one page visit first (cookies)
+    assert len(server.requests) == n == 17
 
 
 def test_force_refetches_but_identical_bytes_are_not_stored_twice(tmp_path: Path, server: Server):

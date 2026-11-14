@@ -36,10 +36,17 @@ def _base_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
     return fig
 
 
+_EVENT_COLOUR = "#CC79A7"
+
+
 def add_markers(fig: go.Figure, markers: Sequence[Marker]) -> None:
-    """Vertical lines at regime changes. Planned ones are dashed."""
+    """Vertical lines at regime changes (grey; planned ones dashed) and at events (pink, dotted,
+    label at the foot of the chart so it does not collide with regime labels)."""
     for marker in markers:
         x = pd.Timestamp(marker.day)
+        is_event = marker.kind == "event"
+        colour = _EVENT_COLOUR if is_event else "#555555"
+        dash = "dot" if is_event else ("dash" if marker.planned else "solid")
         fig.add_shape(
             type="line",
             x0=x,
@@ -47,18 +54,18 @@ def add_markers(fig: go.Figure, markers: Sequence[Marker]) -> None:
             y0=0,
             y1=1,
             yref="paper",
-            line={"color": "#555555", "width": 1.5, "dash": "dash" if marker.planned else "solid"},
+            line={"color": colour, "width": 1 if is_event else 1.5, "dash": dash},
         )
         fig.add_annotation(
             x=x,
-            y=1,
+            y=0 if is_event else 1,
             yref="paper",
             text=marker.label,
             showarrow=False,
             textangle=-90,
             xanchor="right",
-            yanchor="top",
-            font={"size": 10, "color": "#555555"},
+            yanchor="bottom" if is_event else "top",
+            font={"size": 9 if is_event else 10, "color": colour},
         )
 
 
@@ -87,6 +94,35 @@ def premium_figure(
     fig.add_hline(y=0, line={"color": "#888888", "width": 1})
     add_markers(fig, markers)
     return _base_layout(fig, label, "log ratio" if log_measure else "Premium (%)")
+
+
+def x_april_figure(
+    series: pd.DataFrame, *, label: str, markers: Sequence[Marker] = ()
+) -> go.Figure:
+    """``x_april`` (log) per ETF over time from ``data.x_april_series``, with the zero line.
+
+    Zero = the close equals 1.2 x the known NAV. Above zero, the close sits above where the upper
+    price limit would be under the planned April 2027 rule if its base were that NAV. The hover
+    also shows the same distance as a plain percent (``close_vs_cap``).
+    """
+    fig = go.Figure()
+    for i, (symbol, group) in enumerate(series.groupby("symbol", sort=True)):
+        fig.add_trace(
+            go.Scatter(
+                x=group["date"], y=group["value"], mode="lines", name=str(symbol),
+                line={"color": PALETTE[i % len(PALETTE)], "width": 2},
+                customdata=(group["close_vs_cap"] * 100.0).to_numpy(),
+                hovertemplate="%{y:.3f} (close %{customdata:+.1f}% vs 1.2 x NAV)",
+            )
+        )  # fmt: skip
+    fig.add_hline(
+        y=0,
+        line={"color": "#000000", "width": 1.5},
+        annotation_text="0 = close at 1.2 x known NAV",
+        annotation_position="top left",
+    )
+    add_markers(fig, markers)
+    return _base_layout(fig, label, "ln(close / (1.2 x NAV))")
 
 
 def level_figure(frame: pd.DataFrame, symbol: str) -> go.Figure:

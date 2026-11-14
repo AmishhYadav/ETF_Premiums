@@ -44,7 +44,11 @@ DEFAULT_USER_AGENT = (
 
 # host-suffix -> minimum seconds between requests. "nseindia.com" covers
 # www.nseindia.com and nsearchives.nseindia.com, which share one timer.
-DEFAULT_MIN_INTERVAL_S: dict[str, float] = {"nseindia.com": 1.5, "bseindia.com": 2.0}
+DEFAULT_MIN_INTERVAL_S: dict[str, float] = {
+    "nseindia.com": 1.5,
+    "bseindia.com": 2.0,
+    "sebi.gov.in": 2.0,  # notice reader (SEBI RSS and listing pages)
+}
 
 
 class SourceError(RuntimeError):

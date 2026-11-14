@@ -105,8 +105,8 @@ def test_units_turnover_and_creation_total_on_9_nov(plain) -> None:
     assert bool(row["creation_multiple_ok"])
     assert row["turnover"] == pytest.approx(274_573 / 14_675_018)  # 1.87% of units in a day
     assert bool(row["turnover_is_nse_only"]) and pd.isna(row["bse_volume"])
-    # unknown creation-unit size -> empty, never a made-up number
-    assert pd.isna(_row(df, "MASPTOP50", D9)["creation_units_change"])
+    # MASPTOP50 basket = 550,000 units (D36): the fixture's change is 7 redemption baskets
+    assert _row(df, "MASPTOP50", D9)["creation_units_change"] == pytest.approx(-7.0)
 
 
 def test_official_band_columns_empty_when_no_file_covers_the_day(plain) -> None:
@@ -185,9 +185,9 @@ def test_unit_changes_become_events_beside_manual_ones(plain) -> None:
     assert bool(first["verified"])  # whole number of creation units
     assert first["source_primary"].startswith("nse_security_master/2025-01-02/")
     assert pd.isna(first["category"]) and pd.isna(first["direction"])  # set by hand, not by us
-    # units with an unknown basket size are events too, but not 'verified'
+    # MASPTOP50's basket size is now known (D36): its change is whole baskets -> verified
     masp = ev[(ev["type"] == "units_change") & (ev["symbols"] == "MASPTOP50")]
-    assert masp.empty or not masp["verified"].any()
+    assert not masp.empty and masp["verified"].all()
 
 
 def test_manual_events_are_kept_and_not_duplicated(plain, tmp_path) -> None:

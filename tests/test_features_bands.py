@@ -344,3 +344,138 @@ def test_compute_band_frame_unknown_symbol_is_an_error(rules: BandRules) -> None
     df = pd.DataFrame({"symbol": ["XYZ"], "date": [date(2026, 11, 11)], "prev_close": [10.0]})
     with pytest.raises(KeyError, match="asset class"):
         b.compute_band_frame(df, rules, {})
+
+
+# --------------------------------------------------------------------------
+# D38: rounding rule, special sessions, missing-NAV fallback (all against NSE's official bands)
+# --------------------------------------------------------------------------
+def test_band_limits_base_rounded_to_nearest_tick_first() -> None:
+    # MAFANG, 7 Feb 2024, NAV(T-2) 78.8640. NSE's band: 63.08-94.63.
+    # Base to the nearest paisa: 78.8640 -> 78.86.
+    #   low  = 78.86 x 0.8 = 63.088 -> down 63.08;  high = 78.86 x 1.2 = 94.632 -> down 94.63.
+    low, high = b.band_limits(
+        78.8640, 20, tick=0.01, low_mode="down", high_mode="down", base_mode="nearest"
+    )
+    assert (low, high) == (Decimal("63.08"), Decimal("94.63"))
+    # Without rounding the base first: 78.864 x 0.8 = 63.0912 -> down 63.09 (not NSE's value).
+    low, _ = b.band_limits(78.8640, 20, tick=0.01, low_mode="down", high_mode="down")
+    assert low == Decimal("63.09")
+    # Half-up on the base: 66.755 -> 66.76 (14 of 72 such exact ties in NSE data went down).
+    low, high = b.band_limits(
+        66.755, 20, tick=0.01, low_mode="down", high_mode="down", base_mode="nearest"
+    )
+    assert (low, high) == (Decimal("53.40"), Decimal("80.11"))  # 53.408 -> 53.40; 80.112 -> 80.11
+
+
+def test_rounding_modes_change_on_9_dec_2025(rules: BandRules) -> None:
+    assert rules.rounding.modes_for(date(2025, 12, 8)) == ("nearest", "down", "down")
+    assert rules.rounding.modes_for(date(2025, 12, 9)) == ("nearest", "up", "down")
+    assert rules.rounding.modes_for(None) == ("nearest", "up", "down")
+
+
+def test_low_limit_rounded_down_until_8_dec_2025(rules: BandRules) -> None:
+    # BANKBEES 8 Dec 2025, NAV(T-2) 612.0191 -> 612.02.
+    #   low  = 612.02 x 0.8 = 489.616 -> DOWN 489.61 (UP would give 489.62)
+    #   high = 612.02 x 1.2 = 734.424 -> down 734.42.  NSE: 489.61-734.42.
+    band = b.compute_band(date(2025, 12, 8), "equity", rules, nav_t2=612.0191)
+    assert (band.low_initial, band.high_initial) == (489.61, 734.42)
+
+
+def test_low_limit_rounded_up_from_9_dec_2025(rules: BandRules) -> None:
+    # BANKBEES 9 Dec 2025, NAV(T-2) 617.0581 -> 617.06.
+    #   low  = 617.06 x 0.8 = 493.648 -> UP 493.65 (DOWN would give 493.64)
+    #   high = 617.06 x 1.2 = 740.472 -> down 740.47.  NSE: 493.65-740.47.
+    band = b.compute_band(date(2025, 12, 9), "equity", rules, nav_t2=617.0581)
+    assert (band.low_initial, band.high_initial) == (493.65, 740.47)
+
+
+@pytest.mark.parametrize(
+    ("session", "asset", "nav_t2", "official"),
+    [
+        # BANKBEES 2 Mar 2024: 470.0147 -> 470.01;
+        # x0.95 = 446.5095 -> 446.50; x1.05 = 493.5105 -> 493.51
+        (date(2024, 3, 2), "equity", 470.0147, (446.50, 493.51)),
+        # NIFTYBEES 2 Mar 2024 (the "ratio 1.105" band): 243.2198 -> 243.22;
+        # x0.95 = 231.059 -> 231.05; x1.05 = 255.381 -> 255.38
+        (date(2024, 3, 2), "equity", 243.2198, (231.05, 255.38)),
+        # GOLDBEES 18 May 2024: 61.9352 -> 61.94; x0.95 = 58.843 -> 58.84; x1.05 = 65.037 -> 65.03
+        (date(2024, 5, 18), "gold", 61.9352, (58.84, 65.03)),
+    ],
+)
+def test_special_session_has_fixed_5pct_band(
+    rules: BandRules, session: date, asset: str, nav_t2: float, official: tuple[float, float]
+) -> None:
+    band = b.compute_band(session, asset, rules, nav_t2=nav_t2)
+    assert (band.low_initial, band.high_initial) == official
+    assert (band.low_max, band.high_max) == official  # no widening
+    assert band.initial_pct == 5.0 and band.base_kind == "nav_t2"
+
+
+def test_special_session_flags_use_the_narrow_band(rules: BandRules) -> None:
+    # Base 100.00 on 2 Mar 2024: band 95.00-105.00. A high of 105.00 touches the (only) limit.
+    band = b.compute_band(date(2024, 3, 2), "equity", rules, nav_t2=100.0)
+    flags = b.band_flags(band, rules, high=105.0, low=99.0, last=105.0)
+    assert flags["high_touched_initial_upper"] and flags["high_touched_max_upper"]
+    assert flags["widened_up"] is False and flags["widenings_min_up"] == 0
+    assert flags["ltp_at_upper"] is True
+
+
+def test_missing_nav_falls_back_to_prev_close_until_oct_2025(rules: BandRules) -> None:
+    # HNGSNGBEES 14 Feb 2024: T-2 = 12 Feb (Hong Kong holiday, no NAV); latest NAV 231.2863 (9 Feb).
+    # NSE used the previous close 241.12: x0.8 = 192.896 -> down 192.89; x1.2 = 289.344 -> 289.34.
+    band = b.compute_band(
+        date(2024, 2, 14), "equity", rules, nav_t2=231.2863, prev_close=241.12, nav_t2_exact=False
+    )
+    assert band.base_kind == "prev_close" and band.base_price == 241.12
+    assert (band.low_initial, band.high_initial) == (192.89, 289.34)
+    # A NAV dated exactly T-2 keeps the NAV base.
+    band = b.compute_band(
+        date(2024, 2, 14), "equity", rules, nav_t2=231.2863, prev_close=241.12, nav_t2_exact=True
+    )
+    assert band.base_kind == "nav_t2"
+    # prev_close needed but missing: no band.
+    with pytest.raises(b.MissingBaseError):
+        b.compute_band(date(2024, 2, 14), "equity", rules, nav_t2=231.2863, nav_t2_exact=False)
+
+
+def test_missing_nav_keeps_latest_nav_from_24_oct_2025(rules: BandRules) -> None:
+    # MAFANG 27 May 2026: T-2 = 25 May (US Memorial Day, no Mirae NAV);
+    # latest NAV 162.2176 (22 May).
+    # NSE used that NAV: 162.22 x 0.8 = 129.776 -> up 129.78; x 1.2 = 194.664 -> 194.66.
+    band = b.compute_band(
+        date(2026, 5, 27), "equity", rules, nav_t2=162.2176, prev_close=194.66, nav_t2_exact=False
+    )
+    assert band.base_kind == "nav_t2" and band.base_price == 162.2176
+    assert (band.low_initial, band.high_initial) == (129.78, 194.66)
+
+
+def test_compute_band_frame_reads_nav_t2_dates(rules: BandRules) -> None:
+    # MON100 5 Nov 2024: T-2 = 1 Nov (Muhurat; AMFI has no NAV dated 1 Nov), nav_t2 = 31 Oct NAV.
+    # NSE used prev close 164.02: x0.8 = 131.216 -> down 131.21; x1.2 = 196.824 -> 196.82.
+    df = pd.DataFrame(
+        {
+            "symbol": ["MON100", "MON100"],
+            "date": [date(2024, 11, 5), date(2024, 11, 5)],
+            "nav_t2": [163.2638, 163.2638],
+            "nav_t2_date": [date(2024, 11, 1), date(2024, 10, 31)],
+            "nav_t2_nav_date": [date(2024, 10, 31), date(2024, 10, 31)],
+            "prev_close": [164.02, 164.02],
+        }
+    )
+    out = b.compute_band_frame(df, rules, {"MON100": "equity"})
+    assert list(out["band_base_kind"]) == ["prev_close", "nav_t2"]
+    assert (out["band_low_initial"].iloc[0], out["band_high_initial"].iloc[0]) == (131.21, 196.82)
+    # Second row (exact NAV): 163.26 x 0.8 = 130.608 -> 130.60; x 1.2 = 195.912 -> 195.91.
+    assert (out["band_low_initial"].iloc[1], out["band_high_initial"].iloc[1]) == (130.60, 195.91)
+
+
+def test_missing_nav_fallback_needs_nav_t2_regime() -> None:
+    from etfp.config import Regime
+
+    spec = {"initial_pct": 10, "step_pct": 0, "max_widenings": 0}
+    with pytest.raises(ValueError, match="needs base nav_t2"):
+        Regime(
+            name="x", base="prev_close", status="confirmed",
+            bands={"equity": spec, "gold": spec, "silver": spec},
+            missing_nav_fallback=[{"use": "prev_close"}],
+        )  # fmt: skip

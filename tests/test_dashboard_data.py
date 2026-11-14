@@ -277,3 +277,149 @@ def test_text_has_no_advice_words_and_disclaimer_matches_spec() -> None:
         if path.exists():
             found = BANNED.findall(path.read_text(encoding="utf-8"))
             assert not found, f"{name}: {found}"
+
+
+# --------------------------------------------------------------------------
+# April 2027 countdown
+# --------------------------------------------------------------------------
+def test_days_to_april_uses_the_indian_date() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    utc = ZoneInfo("UTC")
+    # 14 Nov 2026 12:00 IST -> 138 days (see test_days_until).
+    assert dd.days_to_april(datetime(2026, 11, 14, 12, 0, tzinfo=dd.IST)) == 138
+    # 31 Mar 2027 18:29 UTC = 23:59 IST on 31 Mar: still 1 day to go.
+    assert dd.days_to_april(datetime(2027, 3, 31, 18, 29, tzinfo=utc)) == 1
+    # 31 Mar 2027 18:30 UTC = 00:00 IST on 1 Apr: the day has come (0), even though the UTC
+    # (and New York) date is still 31 Mar.
+    assert dd.days_to_april(datetime(2027, 3, 31, 18, 30, tzinfo=utc)) == 0
+    assert dd.days_to_april(datetime(2027, 3, 31, 14, 30, tzinfo=ZoneInfo("America/New_York"))) == 0
+    # Just before midnight IST on 13 Nov 2026 -> 139; just after -> 138.
+    assert dd.days_to_april(datetime(2026, 11, 13, 23, 59, tzinfo=dd.IST)) == 139
+    assert dd.days_to_april(datetime(2026, 11, 14, 0, 0, tzinfo=dd.IST)) == 138
+    # After the date: negative.
+    assert dd.days_to_april(datetime(2027, 4, 3, 9, 0, tzinfo=dd.IST)) == -2
+
+
+def test_days_to_april_refuses_naive_datetimes() -> None:
+    from datetime import datetime
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        dd.days_to_april(datetime(2026, 11, 14, 12, 0))  # noqa: DTZ001 (naive on purpose)
+
+
+def x_april_day() -> pd.DataFrame:
+    # x_april = ln(close / (1.2 x NAV)).
+    #   A on D12: close 120, NAV 100 -> ln(120 / 120) = 0.
+    #   A on D13: close 132, NAV 100 -> ln(1.1) = 0.0953102 -> close 10% above 1.2 x NAV.
+    #   B on D12: close 90,  NAV 100 -> ln(0.75) = -0.2876821 -> 25% below.
+    #   B on D13: no NAV -> x_april missing, row dropped.
+    return pd.DataFrame(
+        {
+            "symbol": ["A", "A", "B", "B"],
+            "date": [D12, D13, D12, D13],
+            "x_april": [0.0, np.log(1.1), np.log(0.75), np.nan],
+            "x_april_fv": [0.01, 0.02, 0.03, 0.04],
+        }
+    )
+
+
+def test_x_april_series_and_close_vs_cap() -> None:
+    out = dd.x_april_series(x_april_day(), ["A", "B"])
+    assert list(out.columns) == ["symbol", "date", "value", "close_vs_cap"]
+    assert list(zip(out["symbol"], out["date"], strict=True)) == [
+        ("A", D12),
+        ("A", D13),
+        ("B", D12),
+    ]
+    assert out["close_vs_cap"].tolist() == pytest.approx([0.0, 0.10, -0.25])
+    # Start date and the fair-value variant.
+    late = dd.x_april_series(x_april_day(), ["A", "B"], column="x_april_fv", start=D13)
+    assert late["value"].tolist() == pytest.approx([0.02, 0.04])
+    # Missing column, no symbols, no table: empty but with the columns.
+    for frame in (
+        dd.x_april_series(x_april_day().drop(columns="x_april"), ["A"]),
+        dd.x_april_series(x_april_day(), []),
+        dd.x_april_series(None, ["A"]),
+    ):
+        assert frame.empty and "close_vs_cap" in frame.columns
+
+
+def test_x_april_latest() -> None:
+    latest = dd.x_april_latest(dd.x_april_series(x_april_day(), ["A", "B"]))
+    assert latest["symbol"].tolist() == ["A", "B"]  # highest first
+    assert latest["date"].tolist() == [D13, D12]  # B's newest value is from D12
+    assert latest["above_cap"].tolist() == [True, False]
+    assert latest["close_vs_cap"].tolist() == pytest.approx([0.10, -0.25])
+    assert dd.x_april_latest(dd.x_april_series(None, ["A"])).empty
+
+
+# --------------------------------------------------------------------------
+# Events
+# --------------------------------------------------------------------------
+def sample_events() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "event_id": ["e1", "e2", "e3", "e4"],
+            "date": [date(2026, 9, 25), date(2026, 10, 10), date(2026, 9, 7), date(2026, 10, 10)],
+            "ts_ist": pd.to_datetime(
+                [None, "2026-10-10 18:05", None, "2026-10-10 09:00"]
+            ).tz_localize(dd.IST),
+            "type": ["warning", "other", "rule", "other"],
+            "category": ["caution", "amc_notice", "rule", "media"],
+            "direction": [None, "premium_reducing", None, "neutral"],
+            "symbols": [None, "MONQ50", None, "MAFANG; MASPTOP50"],
+            "first_tradable_session": [
+                date(2026, 9, 28),
+                date(2026, 10, 13),
+                date(2026, 9, 7),
+                None,
+            ],
+            "description": ["BSE caution", "Motilal notice " + "x" * 80, "Regime starts", "News"],
+            "url": [None, "https://example.org/n", None, None],
+            "source_primary": [None, "data/raw/x.pdf", None, None],
+            "verified": [False, True, None, False],
+            "source_file": ["data/manual/events.csv:1"] * 4,
+        }
+    )
+
+
+def test_events_table_sorted_newest_first_with_ist_text() -> None:
+    out = dd.events_table(sample_events())
+    # 10 Oct twice (18:05 before 09:00), then 25 Sep, then 7 Sep.
+    assert out["event_id"].tolist() == ["e2", "e4", "e1", "e3"]
+    assert out["ts_ist"].tolist() == ["2026-10-10 18:05 IST", "2026-10-10 09:00 IST", "", ""]
+    assert out["verified"].tolist() == [True, False, False, False]  # missing -> False
+    assert list(out.columns)[:4] == ["date", "ts_ist", "first_tradable_session", "category"]
+    assert out["first_tradable_session"].iloc[0] == date(2026, 10, 13)
+    assert "source_file" not in out.columns
+
+
+def test_events_table_empty_and_missing() -> None:
+    for frame in (None, sample_events().iloc[0:0]):
+        out = dd.events_table(frame)
+        assert out.empty and list(out.columns) == list(dd.EVENT_COLUMNS)
+
+
+def test_events_table_refuses_naive_timestamps() -> None:
+    events = sample_events()
+    events["ts_ist"] = pd.to_datetime([None, "2026-10-10 18:05", None, None])
+    with pytest.raises(ValueError, match="timezone-aware"):
+        dd.events_table(events)
+
+
+def test_event_markers_filter_and_placement() -> None:
+    events = sample_events()
+    marks = dd.event_markers(events, ["MONQ50"], skip_rule_days=[date(2026, 9, 7)])
+    # e1 (all ETFs) on its first tradable session 28 Sep; e2 (MONQ50) on 13 Oct.
+    # e3 is a rule on a regime day -> skipped; e4 concerns other ETFs -> skipped.
+    assert [m.day for m in marks] == [date(2026, 9, 28), date(2026, 10, 13)]
+    assert all(m.kind == "event" and not m.planned for m in marks)
+    assert marks[0].label == "caution: BSE caution"
+    assert marks[1].label.endswith("...") and len(marks[1].label) <= len("amc_notice: ") + 60
+    # e4 falls back to its date (no first tradable session); no symbol filter = every event.
+    every = dd.event_markers(events)
+    assert len(every) == 4 and date(2026, 10, 10) in [m.day for m in every]
+    assert dd.event_markers(events, ["MAFANG"])[-1].label == "media: News"
+    assert dd.event_markers(None, ["X"]) == [] and dd.event_markers(events.iloc[0:0]) == []

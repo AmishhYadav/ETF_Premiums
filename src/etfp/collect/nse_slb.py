@@ -58,7 +58,7 @@ from datetime import date
 
 import pandas as pd
 
-from etfp.http import PoliteClient, SourceNotFoundError
+from etfp.http import PoliteClient, SourceNotFoundError, SourceUnavailableError
 from etfp.rawstore import RawRecord, RawStore
 
 SOURCE_ELIGIBLE = "nse_slb_eligible"
@@ -149,6 +149,20 @@ def _fetch(
     if _looks_like_html(result.content):  # a web page where a data file should be
         raise SourceNotFoundError(
             f"{source} for {day.isoformat()}: got a web page instead of the file: {url}",
+            source=source,
+            day=day,
+            url=url,
+            status_code=result.status_code,
+        )
+    if not result.content.endswith(b"\n"):
+        # Every complete NSE SLB file ends with a newline. One backfill download
+        # (eligible list, 16 Sep 2021) was cut off mid-line at exactly 71 x 4 KiB with
+        # HTTP 200, and the parser then refused the whole build (DECISIONS D32 follow-up).
+        # A cut-off file is a temporary transfer problem, not "no data": refuse to store
+        # it so the retry / next run downloads it again.
+        raise SourceUnavailableError(
+            f"{source} for {day.isoformat()}: download looks truncated "
+            f"({len(result.content)} bytes, no final newline): {url}",
             source=source,
             day=day,
             url=url,

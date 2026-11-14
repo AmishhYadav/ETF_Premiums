@@ -100,6 +100,7 @@ Given date and regime (from `config/rules.yaml`), return `base_price`, `band_low
 ### 6.5 Units outstanding / valve status
 - units_outstanding = AUM / NAV at month end (from AMC/AMFI disclosures).
 - `valve_open` for month m = units_outstanding rose by more than 1% vs previous month (threshold in config). Store the raw numbers, not just the flag.
+- Implemented as `valve_monthly` (DECISIONS D33): daily security-master counts decide where they exist (R1), this 1% monthly rule only for months covered by the manual AUM/NAV table.
 
 ### 6.6 Other derived columns
 turnover = traded value / AUM; avg trade size = traded value / trades; returns of ETF price, NAV and FV (log).

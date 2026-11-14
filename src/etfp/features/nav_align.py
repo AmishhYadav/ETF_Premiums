@@ -25,8 +25,13 @@ This module computes, for every Indian trading day *t*:
                              ``FV = NAV_a x F_t/F[close of a] x S_t/S_a``.
 ``nav_publication_lag_days`` calendar days from ``nav_known_date`` to *t*
                              (a 3 on Mondays for US ETFs: Friday's NAV).
-``nav_t2_date`` / ``nav_t2`` the Indian session two trading days before *t* and
-                             the NAV for it: the old price-band base (D5). If the
+``nav_t2_date`` / ``nav_t2`` the day before the previous Indian session ("T-2") and
+                             the NAV for it: the old price-band base (D5). T-2 is
+                             normally the session two trading days before *t*; a
+                             NAV the fund dated on a non-session day between them
+                             counts as a day too (31 March, the fiscal year-end NAV
+                             mutual funds must strike even on a holiday: NSE's band
+                             for 2 Apr 2024 uses the NAV of Sun 31 Mar, D38). If the
                              fund published no NAV dated exactly that session
                              (Mirae skips US holidays, D22) the latest NAV dated
                              before it is used, at most ``NAV_T2_MAX_STALE_DAYS``
@@ -178,11 +183,17 @@ def align_nav(
         raise ValueError("underlying close times are not monotone in NAV date")
 
     nav_ord = np.array([d.toordinal() for d in nav_dates], dtype="int64")
+    use_ord = nav_ord[usable] if usable else np.array([], dtype="int64")  # ascending
     rows: list[dict[str, Any]] = []
     for t in days:
         india_close_ns = _utc_ns(cal.market_close("IN", t))
         # Count of usable NAVs whose underlying close is <= India close on t.
         k = int(np.searchsorted(use_ns, india_close_ns, side="right"))
+        # ...and never a NAV dated after t. A NAV dated on a later non-session day (Sun
+        # 31 Mar, the fiscal year-end NAV) embeds the same underlying close as Thu 28 Mar,
+        # but it is struck and published after 31 Mar, so it was not knowable at the
+        # 28 Mar close (it also differs: a few days' expense accrual and FX revaluation).
+        k = min(k, int(np.searchsorted(use_ord, t.toordinal(), side="right")))
         if k:
             idx = usable[k - 1]
             known_date: date | None = nav_dates[idx]
@@ -195,9 +206,16 @@ def align_nav(
             known_date, known_nav, known_underlying, lag = None, float("nan"), None, None
 
         try:
-            t2: date | None = cal.previous_session("IN", cal.previous_session("IN", t))
+            t1 = cal.previous_session("IN", t)
+            t2: date | None = cal.previous_session("IN", t1)
         except ValueError:  # start of the calendar range: no T-2 exists
-            t2 = None
+            t1, t2 = None, None
+        if t2 is not None and t1 is not None:
+            # A NAV dated strictly between the two sessions is on a non-session day
+            # (in practice only 31 March); NSE counts it as T-2 (D38).
+            pos = int(np.searchsorted(nav_ord, t1.toordinal(), side="left"))
+            if pos and nav_dates[pos - 1] > t2:
+                t2 = nav_dates[pos - 1]
         # The band base: NAV for session t2, or, when the fund published no NAV
         # dated t2 (a US holiday at Mirae), the last NAV before it -- that is
         # the latest NAV anyone could have used.

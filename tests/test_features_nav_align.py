@@ -322,3 +322,59 @@ def test_nav_known_monday_lag_3_is_kept() -> None:
     nav = pd.DataFrame({"nav_date": [date(2026, 10, 29), date(2026, 10, 30)], "nav": [1.0, 2.0]})
     r = na.align_nav(nav, [date(2026, 11, 2)], "US").iloc[0]
     assert r.nav_known_date == date(2026, 10, 30) and r.nav_known_at_close == 2.0
+
+
+# --------------------------------------------------------------------------
+# Non-session NAV days count as T-2 (D38)
+# --------------------------------------------------------------------------
+def test_nav_t2_uses_31_march_nav_struck_on_a_holiday() -> None:
+    # Real calendar, 2024: Thu 28 Mar session, Fri 29 Mar Good Friday, Sun 31 Mar (funds must
+    # strike a fiscal-year-end NAV), Mon 1 Apr session, Tue 2 Apr session.
+    # Tue 2 Apr: T-1 = Mon 1 Apr. The last day before T-1 that is a session OR a NAV day is
+    # Sun 31 Mar, so T-2 = 31 Mar and nav_t2 = 56.9324. NSE's GOLDBEES band for 2 Apr 2024
+    # (45.54-68.31) matches: 56.9324 -> 56.93; x 0.8 = 45.544 -> 45.54; x 1.2 = 68.316 -> 68.31.
+    # Mon 1 Apr: T-1 = Thu 28 Mar, so T-2 = Wed 27 Mar (31 Mar is after T-1: not used).
+    nav = pd.DataFrame(
+        {
+            "nav_date": [
+                date(2024, 3, 27), date(2024, 3, 28), date(2024, 3, 31), date(2024, 4, 1),
+            ],
+            "nav": [56.50, 56.8305, 56.9324, 56.9312],
+        }
+    )  # fmt: skip
+    days = [date(2024, 4, 1), date(2024, 4, 2)]
+    out = na.align_nav(nav, days, "IN").set_index("date")
+    r = out.loc[date(2024, 4, 2)]
+    assert r.nav_t2_date == date(2024, 3, 31)
+    assert r.nav_t2_nav_date == date(2024, 3, 31) and r.nav_t2 == 56.9324
+    r = out.loc[date(2024, 4, 1)]
+    assert r.nav_t2_date == date(2024, 3, 27) and r.nav_t2 == 56.50
+
+
+def test_nav_t2_saturday_special_session_without_nav_is_not_exact() -> None:
+    # Sat 2 Mar 2024 was a session (D32) but no fund strikes a NAV on it. Tue 5 Mar:
+    # T-1 = Mon 4 Mar, T-2 = Sat 2 Mar -> no NAV dated then -> latest earlier NAV (Fri 1 Mar).
+    # nav_t2_date != nav_t2_nav_date is the signal the band code uses for its fallback.
+    nav = pd.DataFrame(
+        {"nav_date": [date(2024, 3, 1), date(2024, 3, 4)], "nav": [481.8925, 483.6104]}
+    )
+    r = na.align_nav(nav, [date(2024, 3, 5)], "IN").iloc[0]
+    assert r.nav_t2_date == date(2024, 3, 2)
+    assert r.nav_t2_nav_date == date(2024, 3, 1) and r.nav_t2 == 481.8925
+
+
+def test_nav_dated_after_t_is_never_known_at_t() -> None:
+    # Look-ahead guard. Funds strike a NAV on a non-session day at fiscal year-end
+    # (real case: Sun 31 Mar 2024; NIFTYBEES 247.0198 vs Thu 28 Mar 247.0203). Here a
+    # Saturday NAV (5 Sep) embeds the same HK close as Friday 4 Sep, but it is struck
+    # and published after Friday's Indian close, so on Fri 4 Sep the known NAV must be
+    # the one dated 4 Sep (104.00), not the Saturday one (103.98).
+    nav = dict(NAV)
+    nav[date(2026, 9, 5)] = 103.98
+    out = na.align_nav(nav_frame(nav), WEEKDAYS[1:], "HK", cal=FakeCalendars())
+    r = row(out, date(2026, 9, 4))
+    assert r.nav_known_date == date(2026, 9, 4) and r.nav_known_at_close == 104.00
+    assert r.nav_publication_lag_days == 0
+    # On Mon 7 Sep the Saturday NAV is in the past, but Monday's own NAV is fresher.
+    assert row(out, LABOR_DAY).nav_known_date == LABOR_DAY
+    assert (out["nav_publication_lag_days"].dropna() >= 0).all()

@@ -13,11 +13,23 @@
 #   creation_unit_size  units in one creation/redemption basket.
 #   verify        names of fields not yet confirmed against a primary source.
 #
-# creation_unit_size (request R6): MONQ50 600,000 and MON100 250,000 come from the
-# scheme documents. MASPTOP50 and MAFANG are null until read from the latest Mirae
-# factsheets; they stay in `verify`. Check against DECISIONS D7: every change in
-# MONQ50's units outstanding is a whole number of 600,000-unit baskets
-# (8 and 11), which supports both the size and the reading of IssdCptl.
+# creation_unit_size (request R6, sources checked 2026-11-14, see DECISIONS D36):
+#   MON100     250,000  Motilal Oswal Nasdaq 100 ETF SID dated 29 May 2026, pp. 56 and 67
+#              https://www.motilaloswalmf.com/content/dam/motilal-mf/downloads/mf/sid/2026/may/SID_Motilal%20Oswal%20Nasdaq%20100%20ETF.pdf
+#   MONQ50     600,000  Motilal Oswal Nasdaq Q 50 ETF KIM dated 29 May 2026, p. 15
+#              https://www.motilaloswalmf.com/content/dam/motilal-mf/downloads/mf/key-information-memorandum/2026/may/KIM%20-%20Motilal%20Oswal%20Nasdaq%20Q%2050%20ETF.pdf
+#   MASPTOP50  550,000  Mirae Asset S&P 500 Top 50 ETF SID dated 29 Nov 2025, p. 12
+#              https://www.sebi.gov.in/sebi_data/mutualfundfile/dec-2025/1764670328212.pdf
+#   MAFANG     200,000  Mirae Asset NYSE FANG+ ETF SID dated 31 May 2025, p. 12
+#              https://www.miraeassetmf.co.in/docs/default-source/sid/68-sid-mirae-asset-nyse-fang-etf-may2025.pdf
+#   MAHKTECH   800,000  Mirae Asset Hang Seng TECH ETF SID dated 31 May 2025, p. 9
+#              https://www.miraeassetmf.co.in/docs/default-source/sid/24-sid-mirae-asset-hang-seng-tech-etf-may2025.pdf
+#   HNGSNGBEES  25,000  Nippon India ETF Hang Seng BeES SID dated 30 Jun 2024, p. 5
+#              https://www.sebi.gov.in/sebi_data/mutualfundfile/jul-2024/1720774024905.pdf
+# Each SID says the AMC may change the size at its discretion; only the dated versions
+# above were read, so a change before those dates is not ruled out.
+# Check against DECISIONS D7: every change in MONQ50's units outstanding is a whole
+# number of 600,000-unit baskets (8 and 11).
 #
 # ISINs and AMFI scheme codes below were checked on 2026-11-10 against the NSE ETF
 # list (eq_etfseclist.csv) and the AMFI daily NAV file (NAVAll.txt, matched by ISIN).
@@ -70,10 +82,10 @@ etfs:
     group: blocked
     tracked: true
     futures_proxy: ES
-    creation_unit_size: null
+    creation_unit_size: 550000
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: "E-mini S&P 500 (ES) is a proxy for the S&P 500 Top 50 (SPEC 6.2)."
-    verify: [bloomberg, futures_proxy, creation_unit_size]
+    verify: [bloomberg, futures_proxy]
 
   - symbol: MAFANG
     name: "Mirae Asset NYSE FANG+ ETF"
@@ -87,10 +99,10 @@ etfs:
     group: blocked
     tracked: true
     futures_proxy: ES
-    creation_unit_size: null
+    creation_unit_size: 200000
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: "E-mini S&P 500 (ES) is a proxy for NYSE FANG+ (SPEC 6.2)."
-    verify: [bloomberg, futures_proxy, creation_unit_size]
+    verify: [bloomberg, futures_proxy]
 
   - symbol: MAHKTECH
     name: "Mirae Asset Hang Seng TECH ETF"
@@ -107,7 +119,7 @@ etfs:
     creation_unit_size: 800000
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: null
-    verify: [bloomberg, creation_unit_size]
+    verify: [bloomberg]
 
   - symbol: HNGSNGBEES
     name: "Nippon India ETF Hang Seng BeES"
@@ -124,7 +136,7 @@ etfs:
     creation_unit_size: 25000
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: null
-    verify: [bloomberg, creation_unit_size]
+    verify: [bloomberg]
 
   - symbol: NIFTYBEES
     name: "Nippon India ETF Nifty 50 BeES"

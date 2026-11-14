@@ -1,0 +1,76 @@
+# Keyword rules for the `notices` table (src/etfp/clean/notices.py).
+#
+# What this does: every notice title (SEBI, NSE) is checked against the rules below.
+# A rule that matches gives the notice a CATEGORY GUESS and marks it `relevant`.
+# These are candidates for a human to read, never verified events: nothing here
+# writes to the `events` table. Change `version` whenever you change a rule, so each
+# row's `rules_version` says which rules produced its guess.
+#
+# How matching works (plain words):
+# * Case does not matter. A keyword matches whole words only, with an optional
+#   plural "s"/"es": "ETF" matches "ETF" and "ETFs" but not "ETFX"; "suspen"
+#   would NOT match "suspension" (write the whole word).
+# * `any`: the rule matches if ANY of the keywords appears in the title.
+# * `all_of`: a list of keyword groups; the rule matches if EVERY group has at
+#   least one keyword in the title (an AND of ORs). Use it to avoid noise, e.g.
+#   "price band" alone is about shares in general; "price band" AND "ETF" is ours.
+# * Rules are checked in the order written; the FIRST matching rule gives the
+#   category. `matched_keywords` lists every keyword that hit, from every rule and
+#   from `symbols` below, so a reader can see why.
+# * `exclude`: a title containing any of these is never `relevant` (still logged).
+#
+# Categories follow the events table (DECISIONS D23, request R16):
+#   cap         overseas-investment limits for mutual funds (the reason creations stop)
+#   rule        ETF trading rules: price band, base price, close-out, trading parameters
+#   caution     exchange/regulator warnings to investors about ETF premiums or iNAV
+#   fund_status suspension / resumption of subscriptions or creations
+#   amc_notice  notices naming an AMC we track together with an overseas context
+
+version: 2
+
+rules:
+  - category: cap
+    any:
+      - overseas investment
+      - overseas investments
+      - investment in overseas
+      - investments in overseas
+      - overseas securities
+      - overseas ETF
+      - foreign investment limit
+      - overseas limit
+      - overseas investment limit
+      - foreign securities
+      - international ETF
+      - foreign ETF
+      - investment in foreign
+  - category: rule
+    all_of:
+      - [price band, base price, trading parameters, close-out, price range, circuit, pre-open, call auction, market maker]
+      - [ETF, exchange traded fund, exchange traded funds, mutual fund units]
+  - category: caution
+    all_of:
+      - [caution, cautionary, advisory, investor alert, premium, iNAV, indicative NAV]
+      - [ETF, exchange traded fund, exchange traded funds, iNAV, indicative NAV]
+  - category: fund_status
+    all_of:
+      - [suspension, suspend, resumption, resume, discontinuation, discontinue, restriction, restrict, temporary stop, stoppage]
+      - [subscription, subscriptions, creation, creations, fresh investment, lumpsum, SIP, switch-in, purchase]
+  - category: amc_notice
+    all_of:
+      - [Motilal Oswal, Mirae Asset, Nippon India]
+      # overseas context only: "ETF" or "fund of funds" alone pulled in every domestic
+      # ETF listing and FOF launch of these AMCs (v1 -> v2, 2026-11-14)
+      - [Nasdaq, NYSE, FANG, S&P 500, Hang Seng, overseas, international, global, US, feeder]
+
+exclude: []
+
+# Symbol guesses: a title naming one of these phrases gets that symbol in `symbols`.
+# Symbols must exist in config/etfs.yaml (checked by the tests).
+symbols:
+  MONQ50: [Nasdaq Q 50, Nasdaq Q-50, Nasdaq Q50, MONQ50]
+  MON100: [Nasdaq 100, Nasdaq-100, MON100]
+  MASPTOP50: [S&P 500 Top 50, MASPTOP50]
+  MAFANG: [FANG, FANG+, MAFANG]
+  MAHKTECH: [Hang Seng TECH, MAHKTECH]
+  HNGSNGBEES: [Hang Seng BeES, HNGSNGBEES]

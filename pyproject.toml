@@ -35,6 +35,8 @@ packages = ["src/etfp"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+# paper/ holds frozen analysis scripts from the research drafts (not pipeline code).
+extend-exclude = ["paper"]
 
 [tool.ruff.lint]
 # DTZ = flag naive datetimes (project rule: every timestamp is timezone-aware)

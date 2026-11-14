@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Protocol
 
 import numpy as np
@@ -426,6 +426,8 @@ class Marker:
     day: date
     label: str
     planned: bool
+    kind: str = "regime"
+    """``regime`` (a price-band rule change from rules.yaml) or ``event`` (a row of ``events``)."""
 
 
 def regime_markers(regimes: Iterable[Any]) -> list[Marker]:
@@ -462,6 +464,159 @@ def markers_in_range(
 def days_until(target: date, today: date) -> int:
     """Calendar days from ``today`` to ``target`` (negative once the date has passed)."""
     return (target - today).days
+
+
+def days_to_april(now: datetime, target: date = APRIL_2027) -> int:
+    """Calendar days from the Indian date of ``now`` to ``target`` (1 Apr 2027 by default).
+
+    ``now`` must be timezone-aware: it is converted to Asia/Kolkata first, so 31 Mar 2027 at
+    19:00 UTC (already 1 Apr 00:30 in India) gives 0, not 1. A naive datetime is refused
+    (project rule: no naive datetimes). Negative once the date has passed.
+    """
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("days_to_april needs a timezone-aware datetime (project rule)")
+    return days_until(target, now.astimezone(IST).date())
+
+
+# --------------------------------------------------------------------------
+# April 2027 countdown
+# --------------------------------------------------------------------------
+APRIL_CAP_MULTIPLE = 1.2
+"""x_april compares the close with 1.2 x the known NAV (D30): +20% is the widest an equity ETF's
+price may move from its base in one day under the planned NAV-anchored rule (initial +10%, two
+5% widenings)."""
+
+
+def x_april_series(
+    etf_day: pd.DataFrame | None,
+    symbols: Sequence[str],
+    *,
+    column: str = "x_april",
+    start: date | None = None,
+) -> pd.DataFrame:
+    """Long table ``symbol, date, value, close_vs_cap`` for the April-2027 gauge, oldest first.
+
+    ``value`` is the log number from etf_day (``x_april`` = ln(close / (1.2 x known NAV)), or
+    ``x_april_fv`` on fair value). ``close_vs_cap`` turns it into a plain fraction:
+    exp(value) - 1 = close / (1.2 x NAV) - 1, e.g. value 0.10 -> 0.105 (close 10.5% above
+    1.2 x NAV); value 0 -> 0 (close exactly at 1.2 x NAV). Rows with no value are dropped.
+    """
+    out = premium_series(etf_day, symbols, column, start=start)
+    out["close_vs_cap"] = np.expm1(out["value"].astype("float64"))
+    return out
+
+
+def x_april_latest(series: pd.DataFrame) -> pd.DataFrame:
+    """Newest row of each symbol in an ``x_april_series`` table, highest value first.
+
+    Columns: symbol, date, value, close_vs_cap, above_cap (value > 0).
+    """
+    columns = ["symbol", "date", "value", "close_vs_cap", "above_cap"]
+    if series.empty:
+        return pd.DataFrame(columns=columns)
+    last = series.sort_values(["symbol", "date"], kind="stable").groupby("symbol").tail(1).copy()
+    last["above_cap"] = last["value"] > 0
+    return last[columns].sort_values("value", ascending=False, kind="stable").reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------
+# Events
+# --------------------------------------------------------------------------
+EVENT_COLUMNS = (
+    "date",
+    "ts_ist",
+    "first_tradable_session",
+    "category",
+    "type",
+    "direction",
+    "symbols",
+    "description",
+    "source_primary",
+    "url",
+    "verified",
+    "event_id",
+)
+"""Order of the events-log columns (those that exist in the table)."""
+
+
+def events_table(events: pd.DataFrame | None) -> pd.DataFrame:
+    """The ``events`` clean table for display: newest first, publication time as IST text.
+
+    ``ts_ist`` becomes ``YYYY-MM-DD HH:MM IST`` (empty when unknown); dates stay ``date``
+    objects; ``verified`` missing counts as False. A missing or empty table gives an empty frame
+    with the standard columns. Nothing is filtered out.
+    """
+    if events is None or events.empty:
+        return pd.DataFrame(columns=list(EVENT_COLUMNS))
+    df = events.copy()
+    keep = [c for c in EVENT_COLUMNS if c in df.columns]
+    for col in ("date", "first_tradable_session"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.date
+    sort_ts = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, Asia/Kolkata]")
+    if "ts_ist" in df.columns:
+        stamps = pd.to_datetime(df["ts_ist"], errors="coerce")
+        if len(stamps.dropna()) and stamps.dt.tz is None:
+            raise ValueError("events.ts_ist must be timezone-aware (project rule)")
+        if stamps.dt.tz is not None:
+            stamps = stamps.dt.tz_convert(IST)
+            sort_ts = stamps
+        df["ts_ist"] = [f"{t:%Y-%m-%d %H:%M} IST" if pd.notna(t) else "" for t in stamps]
+    if "verified" in df.columns:
+        df["verified"] = _flag(df, "verified")
+    sort_date = pd.to_datetime(df["date"]) if "date" in df.columns else sort_ts
+    df = df.assign(_d=sort_date, _t=sort_ts).sort_values(
+        ["_d", "_t"], ascending=False, na_position="last", kind="stable"
+    )
+    return df[keep].reset_index(drop=True)
+
+
+def _event_symbols(value: Any) -> set[str]:
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return set()
+    return {s.strip() for s in str(value).split(";") if s.strip()}
+
+
+def event_markers(
+    events: pd.DataFrame | None,
+    symbols: Sequence[str] = (),
+    *,
+    skip_rule_days: Iterable[date] = (),
+) -> list[Marker]:
+    """One chart marker per event that concerns any of ``symbols`` (empty ``symbols`` column =
+    all ETFs; empty ``symbols`` argument = every event).
+
+    The marker sits on ``first_tradable_session`` (the first session whose prices could react),
+    falling back to ``date``. ``rule`` events on a day in ``skip_rule_days`` are left out: those
+    are already drawn as price-band regime markers.
+    """
+    if events is None or events.empty:
+        return []
+    wanted = set(symbols)
+    skip = set(skip_rule_days)
+    out: list[Marker] = []
+    for _, row in events.iterrows():
+        day = None
+        for col in ("first_tradable_session", "date"):
+            if col in events.columns and pd.notna(row[col]):
+                day = pd.Timestamp(row[col]).date()
+                break
+        if day is None:
+            continue
+        affected = _event_symbols(row.get("symbols"))
+        if wanted and affected and not (affected & wanted):
+            continue
+        category = row.get("category")
+        category = "" if category is None or pd.isna(category) else str(category)
+        if category == "rule" and day in skip:
+            continue
+        text = row.get("description")
+        text = "" if text is None or pd.isna(text) else str(text)
+        if len(text) > 60:
+            text = text[:57] + "..."
+        label = f"{category}: {text}" if category else text
+        out.append(Marker(day, label, False, "event"))
+    return sorted(out, key=lambda m: m.day)
 
 
 # --------------------------------------------------------------------------

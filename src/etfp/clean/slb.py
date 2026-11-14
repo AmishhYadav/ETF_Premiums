@@ -38,6 +38,7 @@ from etfp.clean.common import (
     list_raw_files,
     log_gaps,
     parse_file,
+    skipped_raw_files,
 )
 from etfp.collect import nse_slb
 from etfp.store import SCHEMAS, Column, TableSchema, register_schema
@@ -104,12 +105,34 @@ if TABLE_DAILY not in SCHEMAS:
 # -- slb_eligible -------------------------------------------------------------------
 
 
+def _usable(raw_root, source: str, table: str) -> list[RawFile]:
+    """Raw files of ``source``, minus those listed in config/raw_exceptions.yaml.
+
+    A listed file is a proved source defect (e.g. NSE's archive serves a cut-off
+    eligible list for 16 Sep 2021). It stays untouched in data/raw; the day becomes a
+    gap that log_gaps reports, like any other missing day.
+    """
+    skip = skipped_raw_files()
+    out = []
+    for rf in list_raw_files(raw_root, source):
+        if rf.relpath in skip:
+            logger.warning(
+                "%s: skipping %s (config/raw_exceptions.yaml): %s",
+                table,
+                rf.relpath,
+                skip[rf.relpath],
+            )
+            continue
+        out.append(rf)
+    return out
+
+
 def build_eligible(ctx: CleanContext) -> pd.DataFrame:
     """One row per (eligible-list file, configured ETF)."""
     symbols = sorted(ctx.config_symbols())
     rows: list[dict] = []
     days = set()
-    for rf in list_raw_files(ctx.raw_root, nse_slb.SOURCE_ELIGIBLE):
+    for rf in _usable(ctx.raw_root, nse_slb.SOURCE_ELIGIBLE, TABLE_ELIGIBLE):
         frame = parse_file(
             TABLE_ELIGIBLE,
             rf,
@@ -141,7 +164,7 @@ def build_daily(ctx: CleanContext) -> pd.DataFrame:
     symbols = ctx.config_symbols()
     frames: list[pd.DataFrame] = []
     days = set()
-    for rf in list_raw_files(ctx.raw_root, nse_slb.SOURCE_BHAVCOPY):
+    for rf in _usable(ctx.raw_root, nse_slb.SOURCE_BHAVCOPY, TABLE_DAILY):
         frame = parse_file(
             TABLE_DAILY,
             rf,

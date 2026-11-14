@@ -33,7 +33,7 @@ from etfp.alerts.rules import load_alert_config  # noqa: E402
 from etfp.config import load_rules  # noqa: E402
 from etfp.recorder import read_heartbeat  # noqa: E402
 from etfp.store import Store  # noqa: E402
-from etfp.timeutil import now_ist, today_ist  # noqa: E402
+from etfp.timeutil import now_ist  # noqa: E402
 
 
 def _stretch() -> dict:
@@ -97,7 +97,8 @@ st.warning(dd.DISCLAIMER)
 
 store = Store()
 tables = _load(str(store.dir), _file_stamp(store.dir))
-today = today_ist()
+now = now_ist()
+today = now.date()
 
 if not tables.has_data:
     st.info(
@@ -115,10 +116,10 @@ latest_date = max(pd.to_datetime(etf_day["date"]).dt.date)
 
 head = st.columns(3)
 head[0].metric("Latest data date", latest_date.isoformat())
-head[1].metric("Page loaded (IST)", now_ist().strftime("%d %b %Y %H:%M"))
+head[1].metric("Page loaded (IST)", now.strftime("%d %b %Y %H:%M"))
 head[2].metric(
     "Days to 1 Apr 2027",
-    dd.days_until(dd.APRIL_2027, today),
+    dd.days_to_april(now),
     help="Planned date when the price-band anchor returns to the previous day's NAV.",
 )
 
@@ -126,8 +127,17 @@ if not symbols:
     st.warning("No tracked ETFs have data. Check `tracked: true` in `config/etfs.yaml`.")
     st.stop()
 
-tab_overview, tab_detail, tab_inav, tab_quality, tab_about = st.tabs(
-    ["Overview", "ETF detail", "Intraday iNAV", "Data quality", "About"]
+events = tables.get("events")
+tab_overview, tab_detail, tab_april, tab_inav, tab_events, tab_quality, tab_about = st.tabs(
+    [
+        "Overview",
+        "ETF detail",
+        "April 2027",
+        "Intraday iNAV",
+        "Events log",
+        "Data quality",
+        "About",
+    ]
 )
 
 # ---- Overview ---------------------------------------------------------------------------------
@@ -193,14 +203,32 @@ with tab_detail:
         if series.empty:
             st.info("No values for this measure and period.")
         else:
-            in_range = dd.markers_in_range(_markers(), series["date"].min(), series["date"].max())
+            first_day, last_day = series["date"].min(), series["date"].max()
+            in_range = dd.markers_in_range(_markers(), first_day, last_day)
+            show_events = st.checkbox("Show events", value=True, key="detail_events")
+            event_marks = []
+            if show_events:
+                event_marks = dd.markers_in_range(
+                    dd.event_markers(
+                        events,
+                        compare or [chosen],
+                        skip_rule_days=[m.day for m in _markers()],
+                    ),
+                    first_day,
+                    last_day,
+                )
             fig = charts.premium_figure(
                 series,
                 label=measures[measure],
                 log_measure=measure in dd.LOG_MEASURES,
-                markers=in_range,
+                markers=in_range + event_marks,
             )
             st.plotly_chart(fig, **_stretch())
+            if event_marks:
+                st.caption(
+                    "Pink dotted lines: entries of the events log for these ETFs, placed on the "
+                    "first session that could react (see the Events log tab)."
+                )
             later = [m for m in _markers() if m not in in_range]
             if later:
                 st.caption(
@@ -231,6 +259,95 @@ with tab_detail:
             "Shaded area: NSE's official initial limits. Dotted: computed initial limits; "
             "dashed: computed widest limits (gold and silver have no widest limit)."
         )
+
+# ---- April 2027 countdown ---------------------------------------------------------------------
+with tab_april:
+    left_days = dd.days_to_april(now)
+    st.subheader("April 2027: the price-band base returns to NAV")
+    st.metric(
+        "Days to 1 Apr 2027 (IST)",
+        left_days,
+        help="Calendar days from today's date in India to 1 April 2027.",
+    )
+    st.markdown(
+        """
+**What is planned for 1 April 2027.** Since 7 Sep 2026 each day's price limits are drawn around
+the previous day's closing *price*, so the limits can move up with the price day after day. From
+1 April 2027 the base is planned to go back to the previous day's *NAV* (the fund's published
+value per unit). For equity ETFs the limits then start at 10% either side of that NAV and can
+widen twice by 5%, so in one day the price cannot go more than **20% above NAV**. Gold and silver
+ETFs widen without a cap, so the 20% line does not bind them. The rule is planned, not in force,
+and may change before then (`config/rules.yaml`).
+
+**What `x_april` measures.** `x_april` = ln(close / (1.2 x the NAV known at the close)).
+
+* `x_april` = 0: the close is exactly 1.2 x the known NAV.
+* `x_april` > 0: the close sits **above** 1.2 x the known NAV, i.e. above where the April upper
+  limit would be if it were computed on today's known NAV. For example 0.10 means the close is
+  about 10.5% above that level (e^0.10 - 1).
+* `x_april` < 0: the close sits below that level.
+
+This describes where prices are relative to a planned rule. It is not a forecast of what prices
+will do. The NAV used is the latest one published by the close (for US funds, the previous US
+day's NAV); the April rule will use the previous day's NAV, which is usually the same one.
+"""
+    )
+    x_cols = {
+        c: lab
+        for c, lab in {
+            "x_april": "On the known NAV (x_april)",
+            "x_april_fv": "On fair value (x_april_fv)",
+        }.items()
+        if c in etf_day.columns
+    }
+    if not x_cols:
+        st.info("etf_day has no `x_april` column yet. Rebuild with `uv run etfp build`.")
+    else:
+        a_left, a_mid, a_right = st.columns([1, 2, 1])
+        x_col = a_left.selectbox("Reference", list(x_cols), format_func=x_cols.get, key="x_col")
+        x_syms = a_mid.multiselect("ETFs", symbols, default=symbols, key="x_symbols")
+        x_span = a_right.selectbox("Period", list(HISTORY_RANGES), index=1, key="x_span")
+        x_start = None
+        if HISTORY_RANGES[x_span]:
+            x_start = latest_date - timedelta(days=HISTORY_RANGES[x_span])
+        x_series = dd.x_april_series(etf_day, x_syms, column=x_col, start=x_start)
+        if x_series.empty:
+            st.info("No values for these ETFs and this period.")
+        else:
+            x_marks = dd.markers_in_range(
+                _markers(), x_series["date"].min(), x_series["date"].max()
+            )
+            st.plotly_chart(
+                charts.x_april_figure(
+                    x_series, label=f"{x_cols[x_col]}: above 0 = close above 1.2 x NAV",
+                    markers=x_marks,
+                ),
+                **_stretch(),
+            )  # fmt: skip
+            latest_x = dd.x_april_latest(x_series)
+            shown_x = latest_x.assign(close_vs_cap=latest_x["close_vs_cap"] * 100.0).rename(
+                columns={
+                    "symbol": "Symbol",
+                    "date": "Date",
+                    "value": "x_april (log)",
+                    "close_vs_cap": "Close vs 1.2 x NAV (%)",
+                    "above_cap": "Above 1.2 x NAV",
+                }
+            )
+            st.subheader("Latest value for each ETF")
+            st.dataframe(
+                shown_x,
+                hide_index=True,
+                column_config={
+                    "x_april (log)": st.column_config.NumberColumn(format="%.3f"),
+                    "Close vs 1.2 x NAV (%)": st.column_config.NumberColumn(format="%.1f"),
+                },
+                **_stretch(),
+            )
+            st.caption(
+                "Blank days: no NAV known at the close, or the known NAV was more than 7 days "
+                "old and was left out (data-quality flag `dq_nav_stale`)."
+            )
 
 # ---- Intraday iNAV ----------------------------------------------------------------------------
 with tab_inav:
@@ -267,6 +384,31 @@ with tab_inav:
             cols[3].metric("Premium over iNAV", _fmt_pct(last["prem"]))
             st.plotly_chart(charts.intraday_figure(paired, sym, day), **_stretch())
             st.caption(f"iNAV source: {last['source']}. Premium over iNAV = last price / iNAV - 1.")
+
+# ---- Events log -------------------------------------------------------------------------------
+with tab_events:
+    st.subheader("Events log")
+    st.caption(
+        "Dated rule changes, limits, cautions and notices from the `events` table. "
+        "`first_tradable_session` is the first NSE session whose prices could react; "
+        "`ts_ist` is the publication time where known. `verified` is true only once the primary "
+        "document has been saved and checked."
+    )
+    log = dd.events_table(events)
+    if log.empty:
+        st.info("No events loaded yet (`data/manual/events.csv`, then `uv run etfp build`).")
+    else:
+        st.dataframe(
+            log,
+            hide_index=True,
+            column_config={
+                "url": st.column_config.LinkColumn("url"),
+                "verified": st.column_config.CheckboxColumn("verified"),
+            },
+            **_stretch(),
+        )
+        n_ok = int(log["verified"].sum()) if "verified" in log.columns else 0
+        st.caption(f"{len(log)} events; {n_ok} verified.")
 
 # ---- Data quality -----------------------------------------------------------------------------
 with tab_quality:
@@ -336,22 +478,7 @@ without adjustment (`nav_only`). Check official NSE and AMFI data for anything t
         )
     except (FileNotFoundError, ValueError):
         st.caption("Regime table unavailable (config/rules.yaml could not be read).")
-    st.subheader("Events log")
-    events = tables.get("events")
-    if events is None or events.empty:
-        st.caption("No events loaded.")
-    else:
-        keep = [
-            c
-            for c in ("date", "type", "category", "symbols", "description", "verified", "url")
-            if c in events.columns
-        ]
-        st.dataframe(
-            events[keep].sort_values("date", ascending=False),
-            hide_index=True,
-            **_stretch(),
-        )
-        st.caption("`verified` is true only once the primary document has been saved and checked.")
+    st.caption("The events log has its own tab.")
 
 st.divider()
 st.caption(dd.DISCLAIMER)

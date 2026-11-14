@@ -30,7 +30,7 @@ from test_clean_helpers import make_raw_root
 NOW = datetime(2026, 11, 13, 22, 0, tzinfo=IST)
 EXPECTED_FILES = {
     "etf_day.parquet", "inav_snapshots.parquet", "units_monthly.parquet", "units_daily.parquet",
-    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet", "feeder_nav_daily.parquet", "china_etf_daily.parquet",
+    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet", "feeder_nav_daily.parquet", "china_etf_daily.parquet", "valve_monthly.parquet", "notices.parquet", "bullion_ref_daily.parquet",
     "schema.json", "DATA_DICTIONARY.md", "manifest.json",
 }  # fmt: skip
 
@@ -130,8 +130,10 @@ def test_etf_day_parquet_round_trips_with_typed_columns(exported, built) -> None
 def test_schema_json_documents_every_exported_column(exported) -> None:
     folder, *_ = exported
     schema = json.loads((folder / "schema.json").read_text())
-    assert schema["schema_version"] == SCHEMA_VERSION == "1.3.0"
-    assert [c["version"] for c in schema["changelog"]] == ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]
+    assert schema["schema_version"] == SCHEMA_VERSION == "1.5.0"
+    assert [c["version"] for c in schema["changelog"]] == [
+        "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"
+    ]  # fmt: skip
     assert "MEANING CHANGE" in schema["changelog"][1]["changes"]  # 1.1.0 turnover
     for name in (p.stem for p in folder.glob("*.parquet")):
         cols = pq.read_table(folder / f"{name}.parquet").column_names
@@ -146,7 +148,8 @@ def test_schema_json_documents_every_exported_column(exported) -> None:
 def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
     folder, *_ = exported
     text = (folder / "DATA_DICTIONARY.md").read_text()
-    assert "Schema version **1.3.0**" in text
+    assert "Schema version **1.5.0**" in text
+    assert "## valve_monthly" in text and "| valve_status |" in text
     assert "## etf_day" in text and "| cap_pi |" in text and "| prem_nav_known |" in text
     assert text.count("\n| ") > len(ETF_DAY_COLUMNS)
 
@@ -154,7 +157,7 @@ def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
 def test_manifest_contents(exported) -> None:
     folder, _, _, _ = exported
     m = json.loads((folder / "manifest.json").read_text())
-    assert m["schema_version"] == "1.3.0"
+    assert m["schema_version"] == "1.5.0"
     assert m["build_time_ist"] == "2026-11-13T22:00:00+05:30"
     assert m["git"] == {"commit": "uncommitted", "dirty": True}  # the temp folder is no repo
     assert m["date_range"]["etf_day"] == {"first": "2021-01-04", "last": "2026-11-09"}
@@ -170,7 +173,8 @@ def test_manifest_contents(exported) -> None:
     assert m["dq_flag_counts"]["all"]["dq_nav_stale"] >= 1
     assert "MONQ50" in m["dq_flag_counts"]["by_symbol"]
     assert m["fv_method_counts"]["MONQ50"] == {"no_nav": 1}  # its only NAV is 60 days old (D31)
-    assert m["creation_unit_sizes_missing"] and "MASPTOP50" in m["creation_unit_sizes_missing"]
+    # all international sizes are confirmed (D36); only domestic/bullion controls remain
+    assert m["creation_unit_sizes_missing"] and "MASPTOP50" not in m["creation_unit_sizes_missing"]
     assert m["recorder_gaps"]["rows_by_source"]["nse_etf_api"] == 11
     assert m["missing_nse_sessions_by_symbol"]["NIFTYBEES"]["count"] > 1000  # sparse fixtures
     assert m["bloomberg_files"] == []
@@ -205,6 +209,22 @@ def test_unit_events_and_events_are_exported(exported) -> None:
     assert (ev["type"] == "units_change").sum() == len(ue)
     ud = pd.read_parquet(folder / "units_daily.parquet")
     assert {"units_change", "creation_units_change", "units_prev"} <= set(ud.columns)
+
+
+def test_valve_monthly_is_exported(exported) -> None:
+    folder, *_ = exported
+    vm = pd.read_parquet(folder / "valve_monthly.parquet")
+    assert not vm.duplicated(["symbol", "month"]).any()
+    assert set(vm["valve_status"]) <= {"open", "closed", "redeeming_only", "unknown"}
+    assert vm["month"].min() == "2021-01"
+    # Fixture security master (D7 dates): MONQ50 rises in Jan 2025 and Apr 2026.
+    mon = vm[vm["symbol"] == "MONQ50"].set_index("month")
+    assert mon.loc["2025-01", "valve_status"] == "open"
+    assert mon.loc["2025-01", "creation_units_net"] == pytest.approx(8.0)
+    assert mon.loc["2021-06", "valve_status"] == "unknown"  # no units data then
+    m = json.loads((folder / "manifest.json").read_text())
+    assert m["row_counts"]["tables"]["valve_monthly"] == len(vm)
+    assert m["valve_status_counts_by_symbol"]["MONQ50"]["open"] >= 2
 
 
 def test_reexport_same_day_replaces_the_folder(exported, built) -> None:
@@ -332,8 +352,7 @@ def test_manifest_reports_limit_day_coverage(exported) -> None:
 def test_1_3_0_changelog_and_new_columns_and_tables(exported) -> None:
     folder, *_ = exported
     schema = json.loads((folder / "schema.json").read_text())
-    entry = schema["changelog"][-1]
-    assert entry["version"] == "1.3.0"
+    entry = next(e for e in schema["changelog"] if e["version"] == "1.3.0")
     assert (
         "MEANING CHANGE: x_april is now ln(close / (1.2 x nav_known_at_close))" in entry["changes"]
     )

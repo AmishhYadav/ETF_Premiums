@@ -88,9 +88,18 @@ def test_page_runs_with_data(project: Path) -> None:
                 "band_high_official": [120.0, 160.0],
                 "hit_up": [False, True],
                 "dq_missing_close": [False, False],
+                "x_april": [0.0, 0.2231436],  # ln(150 / 120)
             }
         ),
     )
+    store.write_table(
+        "events",
+        blank_table(
+            "events", event_id=["e1"], date=[d1], type=["warning"], category=["caution"],
+            first_tradable_session=[d2], description=["BSE caution"], verified=[False],
+            source_file=["data/manual/events.csv:1"],
+        ),
+    )  # fmt: skip
     store.write_table(
         "etf_master",
         blank_table(
@@ -111,8 +120,15 @@ def test_page_runs_with_data(project: Path) -> None:
     at = run_app()
     assert not at.exception, [e.value for e in at.exception]
     assert DISCLAIMER in texts(at)
-    assert [t.label for t in at.tabs][:2] == ["Overview", "ETF detail"]
+    labels = [t.label for t in at.tabs]
+    assert labels[:2] == ["Overview", "ETF detail"]
+    assert "April 2027" in labels and "Events log" in labels
     assert at.dataframe  # the overview table is drawn
+    events_tab = at.tabs[labels.index("Events log")]
+    assert events_tab.dataframe and "e1" in events_tab.dataframe[0].value["event_id"].tolist()
+    april_tab = at.tabs[labels.index("April 2027")]
+    assert april_tab.dataframe  # the latest-x_april table
+    assert "Days to 1 Apr 2027 (IST)" in {m.label for m in april_tab.metric}
     metrics = {m.label: m.value for m in at.metric}
     assert metrics["Latest data date"] == "2026-11-13"
     assert metrics["Premium over iNAV"] == "30.0%"  # 130 / 100 - 1

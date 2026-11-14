@@ -31,6 +31,7 @@ from etfp import calendars
 from etfp.collect import (
     amfi_nav,
     bse_bhavcopy,
+    notices,
     nse_bhavcopy,
     nse_etf_listfile,
     nse_secmaster,
@@ -60,6 +61,7 @@ AMFI_HISTORY = "amfi_history"
 YAHOO = "yahoo"
 BSE = "bse"  # BSE daily bhavcopy (R9)
 SLB = "slb"  # NSE securities lending: eligible list + SLB bhavcopy (R8)
+NOTICES = "notices"  # SEBI + NSE notice listings (notice reader, SPEC section 3)
 
 DAILY_SOURCES: tuple[str, ...] = (
     BHAVCOPY,
@@ -71,6 +73,7 @@ DAILY_SOURCES: tuple[str, ...] = (
     YAHOO,
     BSE,
     SLB,
+    NOTICES,
 )
 # NSE's list file and AMFI's NAVAll are "latest only" snapshots, so they cannot be backfilled.
 BACKFILL_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
@@ -84,12 +87,14 @@ SOURCE_HELP = {
     YAHOO: "Yahoo futures and FX 5-minute bars (interim free fair value)",
     BSE: "BSE daily bhavcopy (BSE close, units, value, trades)",
     SLB: "NSE securities lending: eligible list and SLB bhavcopy",
+    NOTICES: "SEBI RSS + Legal listing and NSE circulars (last 7 days)",
 }
 
 NSE_HOST = "nseindia.com"
 BSE_HOST = "bseindia.com"
 AMFI_HOST = "amfiindia.com"
 YAHOO_HOST = "finance.yahoo.com"
+SEBI_HOST = notices.SEBI_HOST
 
 # AMFI answers a 12-day window (about 9 MB) but a 30-day window did not finish within 30 s
 # (live check 2026-11-13). The maximum window is still OPEN (docs/DECISIONS.md D9), so we
@@ -304,9 +309,80 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
             units.append(_bse_unit(day))
         elif key == SLB:
             units += _slb_units(day)
+        elif key == NOTICES:
+            start = day - timedelta(days=NOTICE_WINDOW_DAYS)
+            units += notice_window_units(start, day)
+            if day == today:
+                units.append(
+                    Unit(
+                        source=notices.SOURCE_SEBI_RSS,
+                        day=day,
+                        name=notices.SEBI_RSS_NAME,
+                        host=SEBI_HOST,
+                        fetch=lambda c, s: notices.fetch_sebi_rss(c, s, day),
+                    )
+                )
+            else:
+                notes.append(
+                    f"{notices.SOURCE_SEBI_RSS} {day.isoformat()}: skipped, the feed only holds "
+                    "the latest items; the SEBI listing window covers past dates"
+                )
         else:
             raise ValueError(f"unknown source {key!r}")
     return Plan(units, notes)
+
+
+# Notices: each daily run asks for the last 7 days, so a missed run or a long weekend
+# loses nothing (windows overlap; the cleaner merges repeats by notice_id).
+NOTICE_WINDOW_DAYS = 7
+
+
+def notice_window_units(start: date, end: date) -> list[Unit]:
+    """SEBI Legal listing + NSE circulars for [start, end], stored under `end`."""
+    return [
+        Unit(
+            source=notices.SOURCE_SEBI_LISTING,
+            day=end,
+            name=notices.sebi_listing_name(start, end),
+            host=SEBI_HOST,
+            fetch=lambda c, s: notices.fetch_sebi_listing(c, s, start, end),
+        ),
+        Unit(
+            source=notices.SOURCE_NSE_CIRCULARS,
+            day=end,
+            name=notices.nse_circulars_name(start, end),
+            host=NSE_HOST,
+            fetch=lambda c, s: notices.fetch_nse_circulars(c, s, start, end),
+        ),
+    ]
+
+
+def notice_archive_unit(start: date, end: date) -> Unit:
+    """SEBI's circulars "Archive" view for [start, end] (one wide window, stored under `end`)."""
+    return Unit(
+        source=notices.SOURCE_SEBI_ARCHIVE,
+        day=end,
+        name=notices.sebi_archive_name(start, end),
+        host=SEBI_HOST,
+        fetch=lambda c, s: notices.fetch_sebi_archive(c, s, start, end),
+    )
+
+
+def notice_month_windows(start: date, end: date) -> list[tuple[date, date]]:
+    """Calendar-month windows covering [start, end] (first and last may be partial).
+
+    NSE answers a whole month (~700 circulars, ~300 KB) in one request; SEBI pages it
+    25 rows at a time.
+    """
+    if start > end:
+        raise ValueError(f"--from {start} is after --to {end}")
+    windows = []
+    cur = start
+    while cur <= end:
+        nxt = date(cur.year + (cur.month == 12), cur.month % 12 + 1, 1)
+        windows.append((cur, min(end, nxt - timedelta(days=1))))
+        cur = nxt
+    return windows
 
 
 def amfi_windows(

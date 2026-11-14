@@ -223,6 +223,29 @@ in the alerts step and sends nothing.
 The scheduled jobs read `.env` from the project folder, so nothing else needs to change. To
 turn alerts off for a run: `--no-alerts`.
 
+## 6b. Build the open dataset (by hand, local only)
+
+The open dataset (project output 3) is never built by the scheduler and never uploaded by
+the program. After a good build:
+
+```
+uv run etfp export dataset
+```
+
+It writes `exports/dataset/<today>/` (CSV + Parquet per table, `README.md`,
+`DATA_DICTIONARY.md`, `LICENSE-DATA`, `manifest.json`) and `exports/dataset/LATEST.txt`.
+What may go in is decided by `config/dataset.yaml` (DECISIONS D34):
+
+* **`DATASET EXPORT REFUSED: ... not classified`**: the pipeline gained a column. Decide
+  whether it may be published and add it to that table's `columns`, `drop` or the `deny`
+  list, then run again.
+* **`DATASET EXPORT REFUSED: ... denied`**: something licensed (Bloomberg, Yahoo) reached a
+  public table. Do not work around it; find which column or row carries it.
+* `manifest.json` → `code.git_dirty: true` means uncommitted code; commit first for a
+  release you intend to publish.
+* Before publishing anything: answer the README's "Redistribution questions for the owner"
+  and replace `LICENSE-DATA`. Publishing (upload, DOI) is Amish's decision.
+
 ## 7. When something fails
 
 First run `uv run etfp status` and read the step that failed, then the matching section below.

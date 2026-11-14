@@ -205,6 +205,28 @@ class BandSpec(_Frozen):
         return self.initial_pct + self.step_pct * self.max_widenings
 
 
+class MissingNavFallback(_Frozen):
+    """Which base the exchange used, in a date range, when no NAV was dated exactly T-2.
+
+    ``prev_close``: the previous session's closing price. ``latest_nav``: the latest NAV
+    dated before T-2.
+    """
+
+    start: _Date | None = None
+    end: _Date | None = None
+    use: Literal["prev_close", "latest_nav"]
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _ordered(self) -> MissingNavFallback:
+        if self.start is not None and self.end is not None and self.end < self.start:
+            raise ValueError(f"missing_nav_fallback: end {self.end} is before start {self.start}")
+        return self
+
+    def covers(self, day: date) -> bool:
+        return (self.start is None or day >= self.start) and (self.end is None or day <= self.end)
+
+
 class Regime(_Frozen):
     """One period during which a particular price-band rule applied."""
 
@@ -216,7 +238,18 @@ class Regime(_Frozen):
     description: str | None = None
     # Debt ETFs use the "equity" entry. Overnight/liquid ETFs are out of scope.
     bands: dict[BandAssetClass, BandSpec]
+    # Only for base nav_t2: what the exchange used when the fund published no NAV dated
+    # exactly T-2 (D38). Periods by session date; a day no period covers keeps the latest
+    # earlier NAV (the nav_align fallback).
+    missing_nav_fallback: tuple[MissingNavFallback, ...] = ()
     verify: list[str] = Field(default_factory=list)
+
+    def missing_nav_rule(self, day: date) -> str:
+        """``"prev_close"`` or ``"latest_nav"``: base used when no NAV is dated exactly T-2."""
+        for period in self.missing_nav_fallback:
+            if period.covers(day):
+                return period.use
+        return "latest_nav"
 
     @model_validator(mode="after")
     def _checks(self) -> Regime:
@@ -225,6 +258,8 @@ class Regime(_Frozen):
         missing = {"equity", "gold", "silver"} - set(self.bands)
         if missing:
             raise ValueError(f"regime {self.name}: missing band specs for {sorted(missing)}")
+        if self.missing_nav_fallback and self.base != "nav_t2":
+            raise ValueError(f"regime {self.name}: missing_nav_fallback needs base nav_t2")
         return self
 
     def covers(self, day: date) -> bool:
@@ -242,12 +277,74 @@ class Regime(_Frozen):
         return self.band_spec(asset_class).max_pct()
 
 
-class Rounding(_Frozen):
-    """How band limits are rounded to the price tick (the smallest price step)."""
+RoundMode = Literal["up", "down", "nearest"]
 
-    band_low: Literal["up", "down", "nearest"]
-    band_high: Literal["up", "down", "nearest"]
+
+class RoundingPeriod(_Frozen):
+    """An older rounding rule that applied to sessions from ``start`` to ``end`` (inclusive).
+
+    Fields left out fall back to the current rule in :class:`Rounding`.
+    """
+
+    start: _Date | None = None
+    end: _Date | None = None
+    base: RoundMode | Literal["none"] | None = None
+    band_low: RoundMode | None = None
+    band_high: RoundMode | None = None
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _ordered(self) -> RoundingPeriod:
+        if self.start is not None and self.end is not None and self.end < self.start:
+            raise ValueError(f"rounding period: end {self.end} is before start {self.start}")
+        return self
+
+    def covers(self, day: date) -> bool:
+        return (self.start is None or day >= self.start) and (self.end is None or day <= self.end)
+
+
+class Rounding(_Frozen):
+    """How band limits are rounded to the price tick (the smallest price step).
+
+    ``base`` says how the base price is put on the tick grid BEFORE the percentage is
+    applied (``none`` = use it as given). A NAV has four decimals; the exchange first
+    rounds it to the nearest paisa (D38). ``band_low`` / ``band_high`` round the limits.
+    ``history`` lists older rules by session date; the top-level fields are the current rule.
+    """
+
+    band_low: RoundMode
+    band_high: RoundMode
+    base: RoundMode | Literal["none"] = "none"
+    history: tuple[RoundingPeriod, ...] = ()
     verify: list[str] = Field(default_factory=list)
+
+    def modes_for(self, day: date | None) -> tuple[str, str, str]:
+        """``(base, band_low, band_high)`` rounding modes for the session ``day``.
+
+        The first ``history`` period covering ``day`` overrides the current rule;
+        ``day=None`` gives the current rule.
+        """
+        base, low, high = self.base, self.band_low, self.band_high
+        if day is not None:
+            for period in self.history:
+                if period.covers(day):
+                    base = period.base or base
+                    low = period.band_low or low
+                    high = period.band_high or high
+                    break
+        return base, low, high
+
+
+class SpecialSession(_Frozen):
+    """A session with its own fixed band width (e.g. NSE disaster-recovery test sessions).
+
+    Every asset class gets a fixed +/-``pct`` band with no widening; the base price is the
+    one the regime in force would use.
+    """
+
+    date: _Date
+    pct: float = Field(gt=0)
+    reason: str
 
 
 class BandRules(_Frozen):
@@ -257,7 +354,15 @@ class BandRules(_Frozen):
     tick_size: float = Field(gt=0)
     rounding: Rounding
     at_band_tolerance: float = Field(ge=0)  # close within this fraction of a limit = "at band"
+    special_sessions: tuple[SpecialSession, ...] = ()
     sources: tuple[str, ...] = ()
+
+    def special_session(self, day: date) -> SpecialSession | None:
+        """The special-session override for ``day``, if there is one."""
+        for s in self.special_sessions:
+            if s.date == day:
+                return s
+        return None
 
     @model_validator(mode="after")
     def _ordered_and_disjoint(self) -> BandRules:
