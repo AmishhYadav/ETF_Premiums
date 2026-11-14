@@ -279,3 +279,30 @@ def test_nav_t2_is_null_when_the_calendar_runs_out() -> None:
     out = na.align_nav(nav_frame(), WEEKDAYS[1:], "US", cal=FakeCalendars())
     r = row(out, date(2026, 8, 31))
     assert r.nav_t2_date is None and pd.isna(r.nav_t2)
+
+
+def test_nav_t2_falls_back_when_fund_skips_us_holiday() -> None:
+    # Mirae publishes no NAV dated Mon 7 Sep 2026 (US Labor Day, D22).
+    # Wed 9 Sep: t2 session = Mon 7 Sep -> no NAV that date -> use Fri 4 Sep (104.00).
+    nav = pd.DataFrame(
+        {
+            "nav_date": [date(2026, 9, 3), date(2026, 9, 4), date(2026, 9, 8), date(2026, 9, 9)],
+            "nav": [103.00, 104.00, 105.00, 106.00],
+        }
+    )
+    days = [date(2026, 9, 7), date(2026, 9, 8), date(2026, 9, 9)]
+    out = na.align_nav(nav, days, "US")
+    r = out.set_index("date").loc[date(2026, 9, 9)]
+    assert r.nav_t2_date == date(2026, 9, 7)
+    assert r.nav_t2_nav_date == date(2026, 9, 4)
+    assert r.nav_t2 == 104.00
+    # Same-date NAV is genuinely missing on the holiday: not filled.
+    assert pd.isna(out.set_index("date").loc[date(2026, 9, 7)].nav_same_date)
+
+
+def test_nav_t2_long_gap_is_nan() -> None:
+    # A data gap longer than NAV_T2_MAX_STALE_DAYS must not be bridged.
+    nav = pd.DataFrame({"nav_date": [date(2026, 8, 20)], "nav": [100.0]})
+    out = na.align_nav(nav, [date(2026, 9, 9)], "US")
+    r = out.iloc[0]
+    assert pd.isna(r.nav_t2) and r.nav_t2_nav_date is None

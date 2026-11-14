@@ -24,8 +24,13 @@ This module computes, for every Indian trading day *t*:
                              ``FV = NAV_a x F_t/F[close of a] x S_t/S_a``.
 ``nav_publication_lag_days`` calendar days from ``nav_known_date`` to *t*
                              (a 3 on Mondays for US ETFs: Friday's NAV).
-``nav_t2_date`` / ``nav_t2`` NAV dated two Indian trading days before *t*: the
-                             old price-band base (D5).
+``nav_t2_date`` / ``nav_t2`` the Indian session two trading days before *t* and
+                             the NAV for it: the old price-band base (D5). If the
+                             fund published no NAV dated exactly that session
+                             (Mirae skips US holidays, D22) the latest NAV dated
+                             before it is used, at most ``NAV_T2_MAX_STALE_DAYS``
+                             calendar days older; otherwise NaN.
+``nav_t2_nav_date``          date of the NAV actually used for ``nav_t2``.
 
 The rule
 --------
@@ -74,6 +79,7 @@ OUTPUT_COLUMNS = (
     "nav_publication_lag_days",
     "nav_t2_date",
     "nav_t2",
+    "nav_t2_nav_date",
 )
 
 
@@ -83,6 +89,12 @@ class CalendarLike(Protocol):
     def previous_session(self, market: Market, day: date) -> date: ...
     def last_session_on_or_before(self, market: Market, day: date) -> date: ...
     def market_close(self, market: Market, day: date) -> datetime: ...
+
+
+# How stale a fallback NAV may be for the T-2 band base. A fund that skips a
+# US holiday leaves a one-session hole; a long weekend plus a holiday is at most
+# about 4 calendar days. Anything older is a data gap, not a holiday, so NaN.
+NAV_T2_MAX_STALE_DAYS = 5
 
 
 def _clean_nav(nav: pd.DataFrame) -> pd.Series:
@@ -157,6 +169,7 @@ def align_nav(
     if len(use_ns) > 1 and (np.diff(use_ns) < 0).any():  # pragma: no cover - defensive
         raise ValueError("underlying close times are not monotone in NAV date")
 
+    nav_ord = np.array([d.toordinal() for d in nav_dates], dtype="int64")
     rows: list[dict[str, Any]] = []
     for t in days:
         india_close_ns = _utc_ns(cal.market_close("IN", t))
@@ -175,6 +188,16 @@ def align_nav(
             t2: date | None = cal.previous_session("IN", cal.previous_session("IN", t))
         except ValueError:  # start of the calendar range: no T-2 exists
             t2 = None
+        # The band base: NAV for session t2, or, when the fund published no NAV
+        # dated t2 (a US holiday at Mirae), the last NAV before it -- that is
+        # the latest NAV anyone could have used.
+        t2_nav, t2_nav_date = float("nan"), None
+        if t2 is not None:
+            pos = int(np.searchsorted(nav_ord, t2.toordinal(), side="right"))
+            if pos:
+                cand = nav_dates[pos - 1]
+                if (t2 - cand).days <= NAV_T2_MAX_STALE_DAYS:
+                    t2_nav, t2_nav_date = float(series.iloc[pos - 1]), cand
         rows.append(
             {
                 "date": t,
@@ -184,7 +207,8 @@ def align_nav(
                 "nav_known_underlying_date": known_underlying,
                 "nav_publication_lag_days": lag,
                 "nav_t2_date": t2,
-                "nav_t2": float(series.get(t2, float("nan"))) if t2 else float("nan"),
+                "nav_t2": t2_nav,
+                "nav_t2_nav_date": t2_nav_date,
             }
         )
     out = pd.DataFrame(rows, columns=list(OUTPUT_COLUMNS))
