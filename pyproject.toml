@@ -1,6 +1,7 @@
 [project]
 name = "etfp"
 version = "0.1.0"
+license = "MIT"
 description = "ETF premium tracker: data pipeline for India-listed international ETFs"
 requires-python = ">=3.11"
 dependencies = [

@@ -50,7 +50,9 @@ from etfp.timeutil import IST, now_ist
 logger = logging.getLogger("etfp.export_dataset")
 
 DERIVED_SOURCES = ("clean", "derived_units_daily", "derived_unit_events", "derived_events")
-LICENCE_PLACEHOLDER = "TO BE DECIDED BY OWNER"
+# Owner decision 15 Nov 2026 (DECISIONS D41): data CC BY 4.0, code MIT.
+DATA_LICENCE = "CC BY 4.0"
+DATA_LICENCE_URL = "https://creativecommons.org/licenses/by/4.0/"
 DISCLAIMER = (
     "For research and information only. Not investment advice. Figures may contain errors; "
     "check official NSE and AMFI data before acting."
@@ -327,14 +329,19 @@ def _dictionary(frames: dict[str, pd.DataFrame], cfg: DatasetConfig, now: dateti
 
 def _licence_text() -> str:
     return (
-        f"LICENCE FOR THE DATA IN THIS FOLDER: {LICENCE_PLACEHOLDER}\n"
+        f"LICENCE FOR THE DATA IN THIS FOLDER: {DATA_LICENCE}\n"
+        f"{DATA_LICENCE_URL}\n"
         "\n"
-        "No licence has been chosen yet. Until the owner decides and replaces this file, no\n"
-        "permission to copy, share or reuse this data is granted.\n"
+        "You may share and adapt this data for any purpose, provided you give appropriate\n"
+        "credit (cite the dataset; see README.md), link to the licence, and indicate if\n"
+        "changes were made.\n"
         "\n"
-        "Before choosing, the owner must settle the redistribution questions listed in\n"
-        "README.md (NSE, BSE, AMFI, AMC and Google Trends terms). Options often used for\n"
-        "research datasets: CC BY 4.0, CC0, ODbL. Upstream terms may restrict the choice.\n"
+        "Scope: the licence covers this project's own work, i.e. the derived columns in\n"
+        "this folder (premiums, returns, ratios, flags, computed bands, valve status,\n"
+        "events). Values published by NSE, BSE, AMFI, fund houses or Google (prices, NAVs,\n"
+        "official bands, units outstanding, search interest) are NOT included; they can be\n"
+        "re-downloaded from those sources with the project's code (MIT licence) under each\n"
+        "source's own terms (DECISIONS D41).\n"
     )
 
 
@@ -363,8 +370,10 @@ def _readme(
         "cannot issue new units and their market price can drift far above the value of what "
         "they hold (the premium over NAV). In September 2026 SEBI changed how ETF price bands "
         "are anchored and premiums rose from about 20% to over 200%; on 1 April 2027 the band "
-        "anchor moves back to NAV. The panel records prices, NAVs, NAV-based premiums, price "
-        "bands, limit hits and units outstanding so that this episode can be studied.",
+        "anchor moves back to NAV. The panel records NAV-based premiums, computed price bands, "
+        "limit hits, creations and redemptions of units and the monthly valve status so that "
+        "this episode can be studied. Source values (prices, NAVs, units) are not "
+        "republished; see the source data policy below.",
         "",
         "## Coverage",
         "",
@@ -444,14 +453,17 @@ def _readme(
         "",
         "## Licence",
         "",
-        f"{LICENCE_PLACEHOLDER}. See `LICENSE-DATA`. No permission to reuse is granted until the "
-        "owner chooses a licence.",
+        f"Data: [{DATA_LICENCE}]({DATA_LICENCE_URL}), see `LICENSE-DATA`. Code: MIT (the "
+        "project repository's `LICENSE`).",
         "",
-        "## Redistribution questions for the owner",
+        "## Source data policy",
         "",
-        "These sources are included in this local build but their terms for republishing have "
-        "not been checked (`licence_status: unverified` in `config/dataset.yaml`). Settle each "
-        "before publishing; any table can be dropped by removing it from that file.",
+        "This release republishes no values taken verbatim from a data source: prices, "
+        "volumes, NAVs, official price bands, units outstanding, order-book quantities and "
+        "search interest are left out (listed under `drop` in `config/dataset.yaml`). What is "
+        "here is computed by the project from those inputs. To get the source values, run the "
+        "rebuild commands above; they download each file from the official site under that "
+        "source's own terms. The sources used to compute this release:",
         "",
     ]
     for key, s in cfg.sources.items():
@@ -585,7 +597,7 @@ def export_dataset(
                 "package_version": __version__,
                 "dataset_config_sha256": export._sha256(cfg.path) if cfg.path else None,
             },
-            "licence": LICENCE_PLACEHOLDER,
+            "licence": {"data": DATA_LICENCE, "data_url": DATA_LICENCE_URL, "code": "MIT"},
             "date_range": {
                 n: _date_range(df, cfg.tables[n].date_column) for n, df in frames.items()
             },

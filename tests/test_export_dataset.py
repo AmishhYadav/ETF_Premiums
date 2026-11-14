@@ -119,6 +119,23 @@ def test_real_config_loads_and_denies_every_fair_value_column() -> None:
     assert {"nse", "bse", "amfi", "amc_inav", "google_trends"} <= unverified
 
 
+def test_real_config_publishes_no_source_values() -> None:
+    # Owner decision D41: only derived columns are published; source values are rebuilt
+    # locally from the official sites. These must never be exported.
+    real = load_dataset_config()
+    etf = real.tables["etf_day"]
+    for col in ("close", "open", "volume", "nav_same_date", "nav_known_at_close", "nav_t2",
+                "band_low_official", "band_high", "band_low_diff", "units_outstanding",
+                "bse_close", "attention", "float_net"):  # fmt: skip
+        assert col not in etf.columns and col in etf.drop, col
+    assert "prem_raw" in etf.columns and "x_april" in etf.columns  # derived: published
+    for table in ("nav_daily", "band_official", "bse_prices", "units_daily", "trends_daily",
+                  "inav_snapshots", "fof_monthly", "units_monthly"):  # fmt: skip
+        assert table not in real.tables, table
+    assert "units_start" in real.tables["valve_monthly"].drop
+    assert "valve_status" in real.tables["valve_monthly"].columns
+
+
 # ---------------------------------------------------------------- config validation
 def test_config_rejects_a_column_that_is_both_exported_and_denied() -> None:
     raw = copy.deepcopy(RAW)
@@ -238,8 +255,14 @@ def test_export_writes_folder_with_checksums(tmp_path) -> None:
         assert list(cols) == list(pd.read_parquet(folder / f"{table}.parquet").columns)
         assert not [c for c in cols if "fv" in c or c == "pi"]
     readme = (folder / "README.md").read_text()
-    assert DISCLAIMER in readme and "Redistribution questions for the owner" in readme
-    assert "TO BE DECIDED BY OWNER" in (folder / "LICENSE-DATA").read_text()
+    assert DISCLAIMER in readme and "Source data policy" in readme
+    licence = (folder / "LICENSE-DATA").read_text()
+    assert "CC BY 4.0" in licence and "NOT included" in licence  # owner decision, D41
+    assert manifest["licence"] == {
+        "data": "CC BY 4.0",
+        "data_url": "https://creativecommons.org/licenses/by/4.0/",
+        "code": "MIT",
+    }
     dictionary = (folder / "DATA_DICTIONARY.md").read_text()
     assert "| prem_raw |" in dictionary and "| fv |" not in dictionary
     assert (out_root / "LATEST.txt").read_text().strip() == str(folder.resolve())

@@ -31,6 +31,7 @@ from etfp import calendars
 from etfp.collect import (
     amfi_nav,
     bse_bhavcopy,
+    ibja_rates,
     notices,
     nse_bhavcopy,
     nse_etf_listfile,
@@ -62,6 +63,7 @@ YAHOO = "yahoo"
 BSE = "bse"  # BSE daily bhavcopy (R9)
 SLB = "slb"  # NSE securities lending: eligible list + SLB bhavcopy (R8)
 NOTICES = "notices"  # SEBI + NSE notice listings (notice reader, SPEC section 3)
+IBJA = "ibja"  # IBJA gold/silver reference rates (bullion module, D35; research only, D41)
 
 DAILY_SOURCES: tuple[str, ...] = (
     BHAVCOPY,
@@ -74,6 +76,7 @@ DAILY_SOURCES: tuple[str, ...] = (
     BSE,
     SLB,
     NOTICES,
+    IBJA,
 )
 # NSE's list file and AMFI's NAVAll are "latest only" snapshots, so they cannot be backfilled.
 BACKFILL_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
@@ -88,12 +91,14 @@ SOURCE_HELP = {
     BSE: "BSE daily bhavcopy (BSE close, units, value, trades)",
     SLB: "NSE securities lending: eligible list and SLB bhavcopy",
     NOTICES: "SEBI RSS + Legal listing and NSE circulars (last 7 days)",
+    IBJA: "IBJA gold/silver reference rates page (latest snapshot only; research use only)",
 }
 
 NSE_HOST = "nseindia.com"
 BSE_HOST = "bseindia.com"
 AMFI_HOST = "amfiindia.com"
 YAHOO_HOST = "finance.yahoo.com"
+IBJA_HOST = "ibjarates.com"
 SEBI_HOST = notices.SEBI_HOST
 
 # AMFI answers a 12-day window (about 9 MB) but a 30-day window did not finish within 30 s
@@ -326,6 +331,27 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
                 notes.append(
                     f"{notices.SOURCE_SEBI_RSS} {day.isoformat()}: skipped, the feed only holds "
                     "the latest items; the SEBI listing window covers past dates"
+                )
+        elif key == IBJA:
+            # The IBJA page is a "latest" snapshot (today's AM/PM rates plus ~84 days of PM
+            # history in its chart data), so like NAVAll it is only fetched for today.
+            # The evening run (19:45 IST) comes after IBJA's PM poll (16:40-17:00 IST).
+            # Research use only: IBJA asks valuation users to buy its API, so these rates
+            # never go into the open dataset (DECISIONS D41).
+            if day == today:
+                units.append(
+                    Unit(
+                        source=ibja_rates.SOURCE,
+                        day=day,
+                        name=ibja_rates.RAW_NAME,
+                        host=IBJA_HOST,
+                        fetch=lambda c, s: ibja_rates.fetch(c, s, day),
+                    )
+                )
+            else:
+                notes.append(
+                    f"{ibja_rates.SOURCE} {day.isoformat()}: skipped, the IBJA page only holds "
+                    "the latest rates (its chart data covers recent past days)"
                 )
         else:
             raise ValueError(f"unknown source {key!r}")

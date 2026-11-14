@@ -243,8 +243,9 @@ What may go in is decided by `config/dataset.yaml` (DECISIONS D34):
   public table. Do not work around it; find which column or row carries it.
 * `manifest.json` → `code.git_dirty: true` means uncommitted code; commit first for a
   release you intend to publish.
-* Before publishing anything: answer the README's "Redistribution questions for the owner"
-  and replace `LICENSE-DATA`. Publishing (upload, DOI) is Amish's decision.
+* Licences are set (D41): data CC BY 4.0 (`LICENSE-DATA`), code MIT (`LICENSE`). The release
+  carries only derived columns; a new column that copies a source value goes under `drop`.
+  Publishing (Zenodo upload, DOI) is Amish's step.
 
 ## 7. When something fails
 

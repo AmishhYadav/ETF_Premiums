@@ -154,6 +154,7 @@ def test_plan_daily_on_the_day_itself_lists_all_sixteen_files():
         ("sebi_listing", "sebi_legal_20261102_20261109_p1.html"),
         ("nse_circulars", "nse_circulars_20261102_20261109.json"),
         ("sebi_rss", "sebirss.xml"),
+        ("ibja_rates", "ibjarates_home.html"),
     ]
     assert plan.notes == []
     assert all(u.day == DAY for u in plan.units)
@@ -250,10 +251,10 @@ def test_second_run_makes_zero_requests(tmp_path: Path, server: Server):
         first = jobs.run_units(plan.units, client, store)
         n = len(server.requests)
         second = jobs.run_units(plan.units, client, store)
-    assert jobs.summarize(first) == {"fetched": 16, "exists": 0, "unavailable": 0, "failed": 0}
-    assert jobs.summarize(second) == {"fetched": 0, "exists": 16, "unavailable": 0, "failed": 0}
-    # 16 files, 17 requests: NSE's circulars API needs one page visit first (cookies)
-    assert len(server.requests) == n == 17
+    assert jobs.summarize(first) == {"fetched": 17, "exists": 0, "unavailable": 0, "failed": 0}
+    assert jobs.summarize(second) == {"fetched": 0, "exists": 17, "unavailable": 0, "failed": 0}
+    # 17 files, 18 requests: NSE's circulars API needs one page visit first (cookies)
+    assert len(server.requests) == n == 18
 
 
 def test_force_refetches_but_identical_bytes_are_not_stored_twice(tmp_path: Path, server: Server):

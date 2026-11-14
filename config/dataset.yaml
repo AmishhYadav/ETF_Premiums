@@ -13,8 +13,11 @@
 #   Bloomberg/Yahoo lineage path is found in the output, the export fails and the folder is
 #   not written.
 #
-# Publishing (upload, DOI, licence choice) is Amish's decision. The export only writes a
-# local folder under exports/dataset/ (gitignored).
+# Owner decisions (15 Nov 2026, DECISIONS D41): data licence CC BY 4.0, code MIT; the
+# release carries only the project's derived columns: values published by a source (prices,
+# NAVs, official bands, units, order-book quantities, search interest) go under `drop` and are
+# rebuilt locally from the official sites. Uploading (Zenodo DOI) is still Amish's step.
+# The export only writes a local folder under exports/dataset/ (gitignored).
 
 dataset_format_version: "1.0.0"
 title: "India-listed international ETF premiums: daily panel"
@@ -108,31 +111,64 @@ tables:
     from: clean
     primary_key: [symbol, date]
     date_column: date
-    sources: [nse, amfi, bse, amc_disclosures, google_trends, project]
-    description: "One row per ETF per NSE trading day: prices, NAV timing, NAV-based premiums, price bands and limit flags, units outstanding, turnover."
+    sources: [nse, amfi, bse, amc_disclosures, project]
+    description: "One row per ETF per NSE trading day: NAV timing, NAV-based premiums, returns, computed price bands and limit flags, unit changes, turnover. Source values (prices, NAVs, official bands, units) are left out (D41)."
     columns: [
-      symbol, date, underlying_market, asset_class, group_label, open, high, low, close, last,
-      avg_price, prev_close, close_raw, high_raw, low_raw, last_raw, price_adj_factor, volume,
-      value, trades, deliv_qty, deliv_pct, deliv_share, avg_trade, source_file, nav_same_date,
-      nav_known_at_close, nav_known, nav_known_date, nav_known_underlying_date,
-      nav_publication_lag_days, nav_t2_date, nav_t2_nav_date, nav_t2, nav_t1, nav_adj_factor,
-      nav_same_source_file, nav_known_source_file, prem_raw, prem_nav_known, prem_known,
-      prem_band_ref, x_april, regime, band_base_kind, band_base_price, band_low_initial,
-      band_high_initial, band_low_max, band_high_max, hit_up, hit_up_max, last_at_up, hit_down,
-      hit_down_max, last_at_down, widened_up, widened_down, widenings_min_up,
-      widenings_min_down, close_at_upper, close_at_lower, band_low_official, band_high_official,
-      band_low, band_high, band_file_date, band_session_date, band_source_file, band_low_diff,
-      band_high_diff, band_mismatch, hit_up_official, hit_down_official, regime_inferred,
-      regime_inferred_method, units_outstanding, units_file_date, units_stale_days,
-      units_source_file, units, units_source, units_change, creation_units_change,
-      creation_event, creation_multiple_ok, units_change_days_since_prev, bse_close, bse_volume,
-      bse_value, bse_trades, turnover_nse, turnover, turnover_is_nse_only, feeder_units,
-      feeder_units_asof, float_net, excess_rupees, ret_close_1, ret_close_5, ret_own_1,
-      ret_own_5, ret_nav_1, attention, dq_duplicate_row, dq_negative_units, dq_missing_close,
+      symbol, date, underlying_market, asset_class, group_label, price_adj_factor, deliv_share,
+      source_file, nav_known_date, nav_known_underlying_date, nav_publication_lag_days,
+      nav_t2_date, nav_t2_nav_date, nav_adj_factor, nav_same_source_file, nav_known_source_file,
+      prem_raw, prem_nav_known, prem_known, prem_band_ref, x_april, regime, band_base_kind,
+      band_low_initial, band_high_initial, band_low_max, band_high_max, hit_up, hit_up_max,
+      last_at_up, hit_down, hit_down_max, last_at_down, widened_up, widened_down,
+      widenings_min_up, widenings_min_down, close_at_upper, close_at_lower, band_file_date,
+      band_session_date, band_source_file, band_mismatch, hit_up_official, hit_down_official,
+      regime_inferred, regime_inferred_method, units_file_date, units_stale_days,
+      units_source_file, units_source, units_change, creation_units_change, creation_event,
+      creation_multiple_ok, units_change_days_since_prev, turnover_nse, turnover,
+      turnover_is_nse_only, feeder_units_asof, excess_rupees, ret_close_1, ret_close_5, ret_own_1,
+      ret_own_5, ret_nav_1, dq_duplicate_row, dq_negative_units, dq_missing_close,
       dq_missing_nav_known, dq_nav_stale, dq_nav_same_date_missing, dq_nav_t2_missing,
       dq_units_aum_mismatch,
     ]
-    drop: {}
+    drop:
+      open: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      high: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      low: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      last: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      avg_price: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      prev_close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      close_raw: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      high_raw: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      low_raw: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      last_raw: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      volume: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      value: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      trades: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      deliv_qty: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      deliv_pct: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      avg_trade: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      nav_same_date: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      nav_known_at_close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      nav_known: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      nav_t2: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      nav_t1: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_base_price: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_low_official: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_high_official: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_low: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_high: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_low_diff: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      band_high_diff: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      units_outstanding: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      units: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      bse_close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      bse_volume: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      bse_value: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      bse_trades: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      feeder_units: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      float_net: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      attention: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
 
   etf_master:
     from: clean
@@ -150,37 +186,6 @@ tables:
     # futures_proxy (e.g. NQ, ES) is refused by the "futures" column pattern: it only matters
     # for the fair value, which is not in the dataset.
 
-  nav_daily:
-    from: clean
-    primary_key: [symbol, nav_date]
-    date_column: nav_date
-    sources: [amfi]
-    description: "Daily NAV of each ETF as published by AMFI (not adjusted for unit splits)."
-    columns: [symbol, scheme_code, nav_date, nav, nav_source, source_file]
-    drop: {}
-
-  feeder_nav_daily:
-    from: clean
-    primary_key: [scheme_code, nav_date]
-    date_column: nav_date
-    sources: [amfi]
-    description: "Daily NAV of the fund-of-funds that feed four of the ETFs (R14)."
-    columns: [scheme_code, fund_name, etf_symbol, nav_date, nav, source_file]
-    drop: {}
-
-  units_daily:
-    from: derived_units_daily
-    primary_key: [symbol, date]
-    date_column: date
-    sources: [nse, project]
-    description: "Units outstanding per NSE security-master file, with the change since the previous file."
-    columns: [
-      symbol, date, units_outstanding, units_prev, units_prev_date, days_since_prev,
-      units_change, creation_unit_size, creation_units_change, creation_multiple_ok, event_type,
-      source_file,
-    ]
-    drop: {}
-
   unit_events:
     from: derived_unit_events
     primary_key: [symbol, date]
@@ -188,55 +193,12 @@ tables:
     sources: [nse, project]
     description: "One row per change in units outstanding (creation or redemption)."
     columns: [
-      symbol, date, prev_date, units_prev, units_new, units_change, creation_units_change,
-      creation_multiple_ok, event_type, days_since_prev, source_file,
+      symbol, date, prev_date, units_change, creation_units_change, creation_multiple_ok,
+      event_type, days_since_prev, source_file,
     ]
-    drop: {}
-
-  band_official:
-    from: clean
-    primary_key: [symbol, session_date]
-    date_column: session_date
-    sources: [nse]
-    description: "Official daily price band of each ETF from NSE's security master."
-    columns: [
-      symbol, file_date, session_date, series, band_low_official, band_high_official,
-      price_range_raw, source_file,
-    ]
-    drop: {}
-
-  bse_prices:
-    from: clean
-    primary_key: [symbol, date]
-    date_column: date
-    sources: [bse]
-    description: "Daily BSE trading of the same ETFs, matched by ISIN."
-    columns: [
-      symbol, date, isin, scrip_code, series, open, high, low, close, last, prev_close, volume,
-      value, trades, file_format, source_file,
-    ]
-    drop: {}
-
-  slb_eligible:
-    from: clean
-    primary_key: [date, symbol]
-    date_column: date
-    sources: [nse]
-    description: "Whether each ETF was eligible for NSE securities lending on the sampled dates."
-    columns: [date, symbol, eligible, series_count, source_file]
-    drop: {}
-
-  slb_daily:
-    from: clean
-    primary_key: [date, symbol, series]
-    date_column: date
-    sources: [nse]
-    description: "NSE securities-lending trades in the ETFs."
-    columns: [
-      date, symbol, series, maturity, name, market_type, fee_prev_close, fee_open, fee_high,
-      fee_low, fee_close, volume, value, trades, source_file,
-    ]
-    drop: {}
+    drop:
+      units_prev: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      units_new: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
 
   limit_day:
     from: clean
@@ -246,59 +208,22 @@ tables:
     description: "One row per ETF-day a price limit was touched, with intraday detail where 15-minute snapshots exist. Days measured on Bloomberg minute bars are removed."
     columns: [
       symbol, date, touch_basis, limit_basis, obs_source, sample_interval_min, n_obs,
-      first_obs_ts, last_obs_ts, n_book_obs, touched_up, first_touch_ts_up,
-      minutes_at_limit_up, minutes_at_limit_min_up, n_obs_at_limit_up, widenings_up,
-      trigger_hit_up, limit_end_up, sell_qty_up_max, sell_qty_up_close, buy_qty_up_max,
-      n_book_obs_up, locked_up, locked_n_obs_up, locked_close_up, touched_down,
-      first_touch_ts_down, minutes_at_limit_down, minutes_at_limit_min_down,
-      n_obs_at_limit_down, widenings_down, trigger_hit_down, limit_end_down, buy_qty_down_max,
-      buy_qty_down_close, sell_qty_down_max, n_book_obs_down, locked_down, locked_n_obs_down,
-      locked_close_down, source_file,
+      first_obs_ts, last_obs_ts, n_book_obs, touched_up, first_touch_ts_up, minutes_at_limit_up,
+      minutes_at_limit_min_up, n_obs_at_limit_up, widenings_up, trigger_hit_up, n_book_obs_up,
+      locked_up, locked_n_obs_up, locked_close_up, touched_down, first_touch_ts_down,
+      minutes_at_limit_down, minutes_at_limit_min_down, n_obs_at_limit_down, widenings_down,
+      trigger_hit_down, n_book_obs_down, locked_down, locked_n_obs_down, locked_close_down,
+      source_file,
     ]
-    drop: {}
-
-  inav_snapshots:
-    from: clean
-    primary_key: [symbol, ts, source]
-    date_column: ts
-    sources: [amc_inav, nse]
-    description: "Intraday iNAV and quote snapshots recorded by this project every 15 minutes."
-    columns: [
-      symbol, ts, source, last_price, inav, prev_nav, bid, ask, bid_qty, ask_qty,
-      total_buy_qty, total_sell_qty, depth_json, volume, value, data_ts, amc_ts_raw,
-      market_status, source_file,
-    ]
-    drop: {}
-
-  units_monthly:
-    from: clean
-    primary_key: [symbol, month_end]
-    date_column: month_end
-    sources: [amc_disclosures]
-    description: "Month-end AUM, NAV and units from AMC disclosures."
-    columns: [symbol, month_end, aum, nav, units, source, source_file]
-    drop: {}
-
-  fof_monthly:
-    from: clean
-    primary_key: [amfi_scheme_code, month_end]
-    date_column: month_end
-    sources: [amc_disclosures]
-    description: "Month-end holdings of the feeder funds-of-funds in their ETF."
-    columns: [
-      amfi_scheme_code, month_end, fund_name, etf_symbol, aum, etf_units_held, fof_net_flow,
-      subscription_status, notice_date, source_file,
-    ]
-    drop: {}
-
-  trends_daily:
-    from: clean
-    primary_key: [term, geo, date]
-    date_column: date
-    sources: [google_trends]
-    description: "Google Trends search interest per term and day."
-    columns: [term, geo, date, value, window_value, n_windows, source_file]
-    drop: {}
+    drop:
+      limit_end_up: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      limit_end_down: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      sell_qty_up_max: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      sell_qty_up_close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      buy_qty_up_max: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      buy_qty_down_max: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      buy_qty_down_close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      sell_qty_down_max: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
 
   events:
     from: derived_events
@@ -311,3 +236,20 @@ tables:
       description, url, source_primary, verified, source_file,
     ]
     drop: {}
+
+  valve_monthly:
+    from: clean
+    primary_key: [symbol, month]
+    date_column: null
+    sources: [nse, project]
+    description: "Valve status per ETF per calendar month: open (units rose), closed (data present, units never moved), redeeming_only, unknown (D33)."
+    columns: [
+      symbol, month, valve_status, status_rule, source, units_start_date, units_end_date,
+      units_change, units_change_pct, n_obs, n_creation_days, n_redemption_days,
+      n_refresh_dates, creation_unit_size, creation_units_net, all_changes_whole_cu,
+      source_file,
+    ]
+    drop:
+      units_start: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      units_end: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+

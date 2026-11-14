@@ -89,7 +89,7 @@ def raw_files(root: Path) -> list[str]:
 def test_daily_downloads_all_sixteen_files_then_is_idempotent(web: Web, tmp_path: Path):
     result = runner.invoke(cli.app, ["collect", "daily", "--date", "2026-11-09"])
     assert result.exit_code == 0, result.output
-    assert "summary: 16 fetched, 0 already stored, 0 not available, 0 FAILED" in result.output
+    assert "summary: 17 fetched, 0 already stored, 0 not available, 0 FAILED" in result.output
     files = raw_files(tmp_path)
     assert "nse_bhavcopy_full/2026-11-09/sec_bhavdata_full_09112026.csv" in files
     assert "amfi_nav_history/2026-11-09/navhistory_20261106_20261109.txt" in files
@@ -97,13 +97,13 @@ def test_daily_downloads_all_sixteen_files_then_is_idempotent(web: Web, tmp_path
     assert "bse_bhavcopy/2026-11-09/BhavCopy_BSE_CM_0_0_0_20261109_F_0000.CSV" in files
     assert "nse_slb_bhavcopy/2026-11-09/SLBM_BC_09112026.DAT" in files
     assert "nse_circulars/2026-11-09/nse_circulars_20261102_20261109.json" in files
-    # 16 files, 17 requests: NSE's circulars API needs one page visit first (cookies)
-    assert len(files) == 16 and len(web.requests) == 17
+    # 17 files, 18 requests: NSE's circulars API needs one page visit first (cookies)
+    assert len(files) == 17 and len(web.requests) == 18
 
     again = runner.invoke(cli.app, ["collect", "daily", "--date", "2026-11-09"])
     assert again.exit_code == 0
-    assert "summary: 0 fetched, 16 already stored" in again.output
-    assert len(web.requests) == 17  # the second run asked nobody
+    assert "summary: 0 fetched, 17 already stored" in again.output
+    assert len(web.requests) == 18  # the second run asked nobody
 
 
 def test_daily_defaults_to_today_in_india(web: Web, tmp_path: Path):
@@ -126,8 +126,8 @@ def test_daily_one_failure_is_loud_and_nonzero_but_others_still_run(web: Web, tm
     assert result.exit_code == 1
     assert "FAILED      nse_udiff_bhavcopy 2026-11-09" in result.stderr
     assert "HTTP 500" in result.stderr
-    assert "15 fetched" in result.stdout and "1 FAILED" in result.stdout
-    assert len(raw_files(tmp_path)) == 15
+    assert "16 fetched" in result.stdout and "1 FAILED" in result.stdout
+    assert len(raw_files(tmp_path)) == 16
 
 
 def test_daily_404_is_a_failure_not_silently_skipped(web: Web):
