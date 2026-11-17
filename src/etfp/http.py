@@ -331,3 +331,26 @@ class PoliteClient:
 
 def _day_text(day: date | None) -> str:
     return day.isoformat() if day is not None else "no date"
+
+
+# Errors that mean "we never reached the server at all": no DNS answer, no route, connection
+# refused, or the connection could not even be opened in time. A laptop with no network
+# produces exactly these. A read timeout or an HTTP error code is different: the server was
+# reached, so the network itself is fine.
+_CONNECTION_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout)
+
+
+def is_connection_failure(exc: BaseException) -> bool:
+    """True if ``exc`` (or the error it was raised from) is a failure to connect at all.
+
+    ``PoliteClient`` wraps the httpx error in a ``SourceUnavailableError`` (``raise ... from``),
+    so we walk the ``__cause__`` / ``__context__`` chain to find the original.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, _CONNECTION_ERRORS):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False

@@ -23,6 +23,7 @@ BUILT = [t for t, _ in CLEANERS]
 MANUAL = {
     "events", "fof_monthly", "units_monthly", "trends_daily", "feeder_nav_daily",
     "china_etf_daily",
+    "underlying_bar_values",  # free futures/FX bars: empty until a Yahoo download succeeds
 }  # fmt: skip
 
 

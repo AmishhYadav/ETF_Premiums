@@ -447,12 +447,13 @@ def coerce(df: pd.DataFrame, schema: TableSchema) -> pd.DataFrame:
         raise SchemaError(
             f"{schema.name}: columns do not match the schema; missing {missing}, unexpected {extra}"
         )
-    out = pd.DataFrame(
-        {c.name: _coerce_column(df[c.name], c, schema.name) for c in schema.columns},
-        index=df.index,
-    )
-    for name in extra:  # open-ended tables only
-        out[name] = df[name]
+    # Build every column first and make the frame in ONE step. Adding extra columns one by
+    # one (``out[name] = ...``) splits pandas' memory into many small blocks; with a wide
+    # open-ended table that is slow and pandas warns "DataFrame is highly fragmented".
+    columns = {c.name: _coerce_column(df[c.name], c, schema.name) for c in schema.columns}
+    for name in extra:  # open-ended tables only, kept as they are
+        columns[name] = df[name]
+    out = pd.DataFrame(columns, index=df.index)
     return out.reset_index(drop=True)
 
 

@@ -71,6 +71,28 @@ class Bloomberg(_Frozen):
     fx: str | None = None
 
 
+class FormerSymbol(_Frozen):
+    """An NSE trading symbol the fund used before its current one (a symbol change).
+
+    NSE files carry the symbol in force on each day, so without this a renamed fund's
+    history (e.g. SETFNIF50 until 29 Oct 2026, SBINIFTY50 from 30 Oct 2026) would be
+    lost: the cleaners only keep symbols they know. Rows of ``symbol`` dated on or
+    before ``until`` are relabelled to the fund's current symbol when cleaning. The raw
+    files are not touched; ``source_file`` still names the file the row came from.
+    """
+
+    symbol: str = Field(min_length=1)
+    until: _Date  # last trading day under the old symbol (NSE file date)
+    source: str = Field(min_length=1)  # where the change was confirmed
+
+    @field_validator("symbol")
+    @classmethod
+    def _upper(cls, value: str) -> str:
+        if value != value.strip().upper() or " " in value:
+            raise ValueError(f"former symbol {value!r} must be upper-case with no spaces")
+        return value
+
+
 class Etf(_Frozen):
     """One exchange-traded fund in the universe."""
 
@@ -96,6 +118,17 @@ class Etf(_Frozen):
     bloomberg: Bloomberg = Field(default_factory=Bloomberg)
     notes: str | None = None
     verify: list[str] = Field(default_factory=list)  # field names not yet confirmed
+    # Earlier NSE symbols of this fund, oldest first (see FormerSymbol).
+    former_symbols: tuple[FormerSymbol, ...] = ()
+
+    @model_validator(mode="after")
+    def _former_symbols_ordered(self) -> Etf:
+        dates = [f.until for f in self.former_symbols]
+        if dates != sorted(dates) or len(set(dates)) != len(dates):
+            raise ValueError(f"{self.symbol}: former_symbols must be oldest first, one per date")
+        if any(f.symbol == self.symbol for f in self.former_symbols):
+            raise ValueError(f"{self.symbol}: a former symbol cannot equal the current symbol")
+        return self
 
     @field_validator("isin")
     @classmethod
@@ -144,7 +177,18 @@ class EtfUniverse(_Frozen):
             dupes = sorted({str(v) for v in values if values.count(v) > 1})
             if dupes:
                 raise ValueError(f"duplicate {label}: {', '.join(dupes)}")
+        current = {e.symbol for e in self.etfs}
+        former = [f.symbol for e in self.etfs for f in e.former_symbols]
+        clash = sorted({s for s in former if former.count(s) > 1 or s in current})
+        if clash:
+            raise ValueError(
+                f"former symbol(s) {', '.join(clash)} used twice or equal to a current symbol"
+            )
         return self
+
+    def former_symbols(self) -> dict[str, tuple[str, _Date]]:
+        """{old NSE symbol: (current symbol, last day under the old symbol)}."""
+        return {f.symbol: (e.symbol, f.until) for e in self.etfs for f in e.former_symbols}
 
     def by_symbol(self, symbol: str) -> Etf:
         for etf in self.etfs:

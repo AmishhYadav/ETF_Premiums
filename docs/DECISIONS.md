@@ -380,6 +380,83 @@ Method: every official band (security master `PricRg`, Feb 2024 - 4 Sep 2026, 7,
 - **Derived-only dataset (ok).** The release republishes no value taken verbatim from a source. In `config/dataset.yaml`: `etf_day` drops prices, volumes, NAVs, official bands, `band_base_price`, `band_*_diff` (official = computed + diff), units, BSE figures, feeder units, `float_net`, `attention`; `unit_events` drops `units_prev`/`units_new`; `limit_day` drops limit levels and order-book quantities; tables that are pure source copies (`nav_daily`, `feeder_nav_daily`, `units_daily`, `band_official`, `bse_prices`, `slb_*`, `inav_snapshots`, `units_monthly`, `fof_monthly`, `trends_daily`) are no longer exported. `valve_monthly` is added (without `units_start`/`units_end`). Published: premiums, `x_april`, returns, ratios (turnover), computed bands and limit flags, unit changes and creation units, valve status, events, limit-day diagnostics. Users rebuild source values with `etfp backfill` + `etfp build` under each source's terms. Test `test_real_config_publishes_no_source_values`. First release build (15 Nov): 6 tables, `etf_day` 15,528 rows x 74 columns.
 - **Hosting (later).**
 
+### D42. 18 more domestic control ETFs (R20) and NSE symbol changes (18 Nov 2026)
+**Selection rule.** From NSE's ETF list (`nse_etf_seclist/2026-11-16/eq_etfseclist.csv`), `ETF Underlying = EQUITY` only (no gold/silver/debt/global), ranked by traded value in the NSE full bhavcopy (`TURNOVER_LACS`, series EQ, 106 sessions 1 Jun - 31 Oct 2026, old and new ticker summed). Kept broad and sector index funds listed by Feb 2023 (data from 2021 where the fund existed), spread over fund houses and indices; skipped: thematic/factor funds listed after Jan 2024 (MODEFENCE, METALIETF, SMALLCAP, MOREALTY, MOCAPITAL), and funds with a unit split that also changed the ISIN inside the security-master period (PVTBANIETF 1 Mar 2024, BANKNIFTY1 27 Feb 2026, PSUBANK 10 Jul 2026, HDFCNIFBAN 2 Feb 2024, FMCGIETF 10 May 2024) because units/ISIN lineage would need extra handling. Domestic funds have no overseas cap, so creation is open (`group: control`, `tracked: false`).
+
+| Symbol | Fund house | Index | Avg traded value Jun-Oct 2026, Rs cr/day | AMFI code | Former NSE symbol (last day) |
+|---|---|---|---|---|---|
+| ITBEES | Nippon India | Nifty IT | 58.10 | 148408 | NETFIT (2022-05-09) |
+| HDFCSML250 | HDFC | Nifty Smallcap 250 | 30.32 | 151375 | - (listed 2023-02-21) |
+| SBINIFTY50 | SBI | Nifty 50 | 22.53 | 135106 | SETFNIF50 (2026-10-29) |
+| PSUBNKBEES | Nippon India | Nifty PSU Bank | 21.87 | 140089 | - |
+| MID150BEES | Nippon India | Nifty Midcap 150 | 18.82 | 146271 | NETFMID150 (2022-05-09) |
+| PHARMABEES | Nippon India | Nifty Pharma | 13.87 | 149008 | NETFPHARMA (2022-05-09; listed 2021-07-07) |
+| CPSEETF | Nippon India | Nifty CPSE | 9.07 | 140107 | - |
+| HDFCNIFTY | HDFC | Nifty 50 | 7.71 | 135853 | HDFCNIFETF (2023-06-15) |
+| NIFTYETF | Mirae Asset | Nifty 50 | 7.40 | 145633 | MAN50ETF (2023-08-31) |
+| NEXT50IETF | ICICI Prudential | Nifty Next 50 | 7.29 | 144587 | ICICINXT50 (2023-12-19) |
+| MIDCAPETF | Mirae Asset | Nifty Midcap 150 | 6.24 | 149918 | MAM150ETF (2023-08-31; listed 2022-03-15) |
+| HDFCBSE500 | HDFC | BSE 500 | 6.15 | 151376 | - (listed 2023-02-21) |
+| NIFTY1 | Kotak Mahindra | Nifty 50 | 4.88 | 112351 | KOTAKNIFTY (2024-03-19) |
+| ICICIB22 | ICICI Prudential | BSE Bharat 22 | 4.80 | 141957 | - |
+| BANKBETA | UTI | Nifty Bank | 3.21 | 148173 | UTIBANKETF (2025-12-23) |
+| NIFTYBETA | UTI | Nifty 50 | 2.73 | 135320 | UTINIFTETF (2025-12-23) |
+| MOM100 | Motilal Oswal | Nifty Midcap 100 | 2.71 | 114456 | M100 (2021-06-15) |
+| SENSEXIETF | ICICI Prudential | BSE Sensex | 1.66 | 101705 | ICICISENSX (2023-12-19) |
+
+Controls are now 22 (with NIFTYBEES 180.3, BANKBEES 46.8, JUNIORBEES 29.8, NIFTYIETF 19.9 Rs cr/day), 9 fund houses, 12 indices. HDFCSML250 and HDFCBSE500 traded only a few lakh rupees a day in 2023 (HDFCBSE500 median premium 4.3% in 2023 Q2, below 0.5% from 2023 Q4): liquidity was measured on 2026 data and is not uniform over the sample.
+
+**Verified (from raw files we hold, no new downloads).** ISIN: NSE ETF list. AMFI scheme code: the only `NAVAll.txt` (2026-11-16) row with that ISIN; the code is present in AMFI NAV history from 2021-01-01 (or launch) to 2026-11-16 with the same ISIN and name throughout (real extract kept as test fixture `tests/fixtures/amfi/NAVAll_controls_20261116.txt`). Prices: full bhavcopy 2021-2026 and UDiFF 2024-2026. Security master (`IssdCptl`, `PricRg`): present for all 18 for every file from 2024-02-05. Gaps in NAV only on the special sessions already known (Muhurat days), same as the existing ETFs.
+
+**Unit splits (config/corporate_actions.yaml, verified from raw data only):** HDFCNIFTY 10:1 price ex 2021-02-17, NAV ex 2021-02-22; BANKBETA 10:1 price ex 2021-02-17, NAV ex 2021-02-22; NIFTYBETA 10:1 price ex 2023-09-25, NAV ex 2023-09-26 (numbers in the yaml). BANKBETA traded 3-7% above NAV for the first days after its split (17-19 Feb 2021): real prices, not an adjustment error (the NAV on the new scale agrees).
+
+**NSE symbol changes — FOUND, affects existing ETFs too.** NSE renames ETF tickers (most fund houses did between 2022 and 2026). The cleaners kept only symbols on the current NSE list, so a renamed fund's history before the rename was silently missing from `prices_daily`, `units_daily`, `band_official` and `etf_day`: **NIFTYIETF had no rows before 2023-12-20 (was ICICINIFTY), MON100 none before 2021-06-16 (was N100), SILVERBEES none before 2022-05-10 (was NETFSILVER).** New config field `former_symbols` (`symbol`, `until`, `source`) and `clean.common.map_former_symbols`, applied in `prices_daily` and the security-master reader: rows of the old ticker dated on or before `until` get the current ticker; the raw files and `source_file` are unchanged. The build stops if a relabelled row's ISIN (UDiFF, security master) differs from the configured ISIN, or if old and new ticker give two rows for one day. Sources: NSE `symbolchange.csv` (https://nsearchives.nseindia.com/content/equities/symbolchange.csv, read once on 2026-11-18, not stored in data/raw) lists 13 of the 16 renames used. Not listed there, inferred from price continuity (old ticker's last close = new ticker's first PREV_CLOSE, old ticker gone the same day): ICICINIFTY -> NIFTYIETF and ICICISENSX -> SENSEXIETF (20 Dec 2023, the same day as ICICI's listed renames), SETFNIF50 -> SBINIFTY50 (30 Oct 2026, also same ISIN INF200KA1FS1 under both tickers in UDiFF; probably too recent for NSE's list).
+
+**Result (scratch rebuild of the clean tables + `etf_day` from the real raw store, not written to data/clean).** `etf_day` 41,148 rows. Additions only: no existing row of `prices_daily`, `units_daily` or `band_official` changed value. NIFTYIETF +734 rows (now from 2021-01-01), MON100 +111 (2021-01-01 to 2021-06-15; split factors apply), SILVERBEES +61 (from 2022-02-07). Every new control has NAV on all but the Muhurat days. Band check vs official `PricRg`: new 18 controls, before 7 Sep 2026: 23 mismatches in 11,538 ETF-days (0.20%): 18 on 22 Jul 2024 (the all-ETF day of D38) and 5 one-tick misses on exact-tie NAVs (x.xx5; NEXT50IETF 3 Jun and 11 Jul 2024, HDFCNIFTY 2 Jun 2025, SBINIFTY50 11 Jul 2025, PSUBNKBEES 2 Sep 2026), the same tie issue as D38. From 7 Sep 2026: 0 of 864. Existing 12: unchanged (20 of 7,692 before; 0 of 576 after). Median `prem_nav_known` from 7 Sep 2026 is within +/-0.2% for every control.
+
+**VERIFY / open.** (1) Creation-unit sizes not read from the SIDs (18 x `creation_unit_size: null`, in `verify`). Hint from the security master, the largest common divisor of all unit changes 2024-2026: ITBEES 100,000; PSUBNKBEES 25,000; MID150BEES 35,000; PHARMABEES 75,000; NIFTYETF 50,000; MIDCAPETF 400,000; BANKBETA 100,000; MOM100 125,000; NIFTY1 12,500; HDFCNIFTY 4,000; the rest 1-20, i.e. not informative (units also change by small amounts). (2) The three unlisted renames rest on price continuity (and ISIN for SBI). (3) `symbolchange.csv` is not in the raw store; a collector for it would let a test catch future renames. (4) SLB tables and BSE prices before an ISIN change are not relabelled (SLB uses config symbols; BSE matches ISIN). (5) Not changed: `schema_version` (no column changed meaning; rows were added for NIFTYIETF, MON100 and SILVERBEES, so research results using those three before the dates above should be re-run; orchestrator may prefer a minor bump). The frozen research scripts `paper/draft3/analysis/common.py` hard-code the four old controls (`DOM = [...]`); the research side should select `group_label == "control"`.
+
+### D43. Free fair-value inputs: Yahoo 60m history mode (still HTTP 429), FBIL reference rates (works), roll guard (17-18 Nov 2026)
+**Sources tried (17 Nov 2026, 19:44-20:02 UTC; generic desktop-Chrome User-Agent, no personal headers):**
+| Request | Result |
+|---|---|
+| Yahoo `query1.../v8/finance/chart/NQ=F?interval=60m&range=730d` (curl) | HTTP 429 "Too Many Requests" (19 bytes) |
+| Yahoo same on `query2` host, 24 s later | HTTP 429 |
+| Yahoo NQ=F 60m via `etfp collect yahoo-history` (httpx, period1/period2), 17 min later | HTTP 429; command stopped, nothing stored |
+| Stooq `stooq.com/q/d/l/?s=nq.f&i=d` | HTTP 200 but an HTML JavaScript proof-of-work page, no CSV. Not worked around. |
+| Dukascopy datafeed (`datafeed.dukascopy.com`) hourly candles, index CFDs `USATECHIDXUSD`, `USA500IDXUSD` | HTTP 503 or hung (timeout); EURUSD candles answered 200, so the server works but these instruments are not served there. No INR pair seen. Dropped. |
+| FBIL `www.fbil.org.in/wasdm/refrates/fetchfiltered?fromDate&toDate&authenticated=false` | HTTP 200 JSON; a full calendar year in one request (~4 s, ~130 KB) |
+
+Yahoo got three requests in total, each >= 10 s apart; the 429 comes back at once, so it is a block on this client/network, not a rate on our pace. A real browser session (as for NSE quotes, D12) or another network might pass; not tried (owner's call).
+
+**What works: FBIL reference rates.** New collector `collect/fbil_refrates.py` (`etfp collect fbil --from/--to`, one request per calendar year, 3 s apart), clean table `fx_ref_daily` (date, pair, rate = rupees per ONE unit, quote_units, rate_quoted, published_ist, source, source_file), and `etf_day.usdinr_ref` = FBIL USD/INR dated the same day (NaN if none, never carried forward). Backfilled 2021-01-01..2026-11-18 into `data/raw/fbil_refrates/2026-11-18/` (6 files, 836 KB): USD, EUR, GBP, JPY 1,415 days each from 2021-01-01; AED and IDR from 2026-01-05; RUB from 2026-09-15. Published 13:30 IST (older) or 13:00 IST (recent), so known before the 15:30 close. Hand check: 9 Nov 2026 "INR / 1 USD" 93.8579 in the raw JSON = `fx_ref_daily` = `usdinr_ref`.
+- **VERIFY:** the public feed stopped at 2026-11-09 when asked on 2026-11-18 (about a week's lag for non-subscribers?). The daily job should re-ask a rolling 31-day window; `etfp collect fbil` defaults to that. It is NOT yet in `jobs.DAILY_SOURCES` (adding it changes the daily-run file counts other tests pin; left to the jobs.py owner).
+- **No HKD/INR** at FBIL (none 2021-2026). HK ETFs keep `nav_only` until a free HKD source is found (USD/HKD cross from another free source is an option; not built).
+- Redistribution terms not checked: `usdinr_ref` is under `drop` in `config/dataset.yaml` (D41).
+
+**Yahoo 60m history mode (built, untested live).** `yahoo_intraday.fetch_history` / `etfp collect yahoo-history`: one request per symbol (NQ=F, ES=F, USDINR=X, HKDINR=X; no Hang Seng future because the HK ETFs have `futures_proxy: null`), 728 days of 60m bars (Yahoo's 60m limit is ~730 days, VERIFY), `period2` = now rounded down to the hour so no in-progress bar is stored, >= 10 s between requests, stop at the first 429/403. Saved untouched as `yahoo_intraday/<IST date>/<SYM>_60m_history.json` beside the daily 5m files; the daily 5m collection is unchanged. 728 days from 17 Nov 2026 reaches 19 Nov 2024: 448 US sessions to 4 Sep 2026, so the R12 beta window of 250 NAV dates is reachable (14 sessions are left out by the roll guard below, each costing at most 2 pairs).
+
+**Bar chosen at 15:30 IST:** the close of the LAST BAR THAT HAD ENDED at or before 15:30 IST (10:00 UTC). For 60m futures/FX bars (Yahoo stamps the bar START; these bars start on the hour) that is the bar 09:00-10:00 UTC, staleness 0. For the US close of the NAV's session: the bar ending at 16:00 New York (15:00-16:00), 13:00 on early-close days. Staleness limits unchanged from the build: futures 30 min, FX 60 min; staler = missing, never carried. The audit table `underlying_bar_values` (date, moment IN_1530/US_CLOSE, symbol, close, at, bar_start, bar_end, interval_minutes, stale_minutes, source_file) records the bar used at the 30-minute rule.
+
+**Fixes and rules in the free tier (build.py, small):**
+- `load_underlying` de-duplicated bars on (symbol, start) only, so a 5m and a 60m bar starting at the same minute were treated as one and the 60m bar could be lost. Now (symbol, start, bar length). `yahoo_intraday.value_at` now picks the latest bar END (ties: the shorter bar).
+- **Roll guard.** NQ=F/ES=F are continuous front-month series; at the quarterly switch the next contract trades ~1% higher (carry), which would inflate F_t/F_a. Only a switch during the US night can sit between F_a (US close) and F_t (15:30 IST). Candidate moments: 18:00 New York opening the CME roll-date session (third Friday - 8 days) and opening the expiry session (third Friday, or the session before it if that Friday is a US holiday: 18 Jun 2026). Free-tier rows whose (US close of a, 15:30 IST t] holds one get no futures ratio -> `nav_only` (about 2 rows per ETF per quarter). For the beta, sessions whose close-to-close interval holds a candidate (also 09:30 New York on expiry day) have no futures level. Which moment Yahoo really switches at is **VERIFY** once bars arrive (compare NQ=F with NQZ26.CME-type contract symbols); then drop the other candidate. Bloomberg rows are not guarded (generic tickers roll differently; check when the data arrive).
+- `fv_method` meanings unchanged: `free_futures` where all needed free inputs exist and no roll is straddled, else `nav_only`. `fv_beta_n` already reports the sample; with no bars it stays 0/`no_beta`.
+
+**Open (owner/analysis):**
+- `fv_in_fx_a` (S_a) is the FX at the US close of a (existing build rule). D36 says the fund houses value FX at ~15:30 IST (Mirae), 17:00 IST (Motilal) or the RBI/FBIL rate (Nippon) on the NAV date. FBIL of date a is now available and is the documented rate for Nippon; switching S_a to it (or to the 15:30 IST bar of date a) would change what `fv_in_fx_a` means -> schema bump. Not done; owner to decide.
+- Hand-computed tests: `tests/test_fair_value_free_futures.py` (normal day 203.01; stale future -> nav_only; FX 60-min stale 202.6446809; no bars -> NAV; US holiday 148.57425; roll night -> nav_only and next day 101.0; 5m/60m same start), `tests/test_collect_fbil_refrates.py`, `tests/test_clean_underlying_values.py`.
+- Schema: `etf_day.usdinr_ref` is a NEW column (no existing meaning changed): suggest schema 1.6.0 and a SCHEMA_CHANGELOG line (not bumped here). New clean tables `fx_ref_daily`, `underlying_bar_values` (not in the open dataset; Yahoo tables are denied by pattern only if named so - `underlying_bar_values` is simply not listed under `tables:`).
+
+### D44. Ops: offline fail-fast, missed-session catch-up, launchd priority, build speed (18 Nov 2026)
+- **Why:** the 17 Nov evening run had no network; it spent 50 min retrying 17 sources (all httpx ConnectError), then rebuilt and alerted on stale data. The launchd build also took 29 min against ~5 min in Terminal.
+- **Offline check** (`src/etfp/netcheck.py`): before collect, DNS + one HEAD (5 s) to AMFI, then BSE, then Yahoo; the first HTTP answer of any status means online. NSE is never probed. Offline: collect fails at once with "offline (no network)", build/export/alerts are SKIPPED with the reason, exit code 1, `etfp status` shows it.
+- **Network breaker** (`collect/jobs.py` `NetworkBreaker`): 3 connection failures in a row across at least 2 hosts stop the remaining downloads ("not tried: network down"). Any server answer resets it. The per-host 5-failure rule is unchanged.
+- **Catch-up** (`jobs.plan_catch_up`): each daily run also plans the dated files of NSE sessions in the 7 calendar days before its day that are neither stored nor recorded as missing; 404s go to `backfill_state.json`. Before this, a session whose evening and morning runs both failed was never fetched.
+- **launchd priority:** daily plists now use `ProcessType = Standard`; "Background" ran Python ~5x slower (`taskpolicy -b`). The iNAV recorder plist stays Background. Plists must be reinstalled to take effect.
+- **Build speed:** security-master parsing (58% of time) strips only the 11 fields used; AMFI dates parsed once per file; `store.coerce` builds columns in one step (no pandas fragmentation warning). Terminal build 305 s -> 241 s. All 24 clean tables compared with `assert_frame_equal(check_exact=True)` before/after on the same config: identical.
+- **Schema 1.6.0** (export changelog): covers D42 (more rows from symbol changes, 18 controls) and D43 (`usdinr_ref`, `fx_ref_daily.parquet` in the research export).
+
 ## Open VERIFY items (running list)
 
 | Item | Where it matters | Status |
@@ -391,7 +468,7 @@ Method: every official band (security master `PricRg`, Feb 2024 - 4 Sep 2026, 7,
 | `IssdCptl` update lag vs AMC figures | M5 valve status | PARTLY (D33): refreshed in about-weekly batches; lag vs AMC creation dates OPEN |
 | NAV timing for HK ETFs and before Jul 2023 | M3 fair value | PARTLY (D36): Mirae US SIDs say NAV(T) uses day-T prices; HK SID silent but implies same-day close; Motilal SID wording (previous day's close) conflicts with D10 data; pre-Jul 2023 not checked |
 | FX rate and time used in each AMC's NAV | M3 fair value | RESOLVED from SIDs (D36): Mirae Bloomberg/Reuters ~15:30 IST or RBI; Motilal Reuters 11:30 GMT (17:00 IST); Nippon RBI. MONQ50 SID not read |
-| Free futures/FX source reliability | M2/M3 | OPEN — Yahoo returned 429 on first try (D22) |
+| Free futures/FX source reliability | M2/M3 | OPEN — Yahoo 429 again 17 Nov (3 requests, incl. 60m history mode); Stooq JS challenge; Dukascopy has no index CFDs on its datafeed (D43) |
 | NSE circular 122/2026 full text | `config/rules.yaml` | OPEN (secondary summaries only) |
 | 2027 NSE holiday list | calendars | OPEN (not yet published) |
 | Bloomberg tickers per ETF | `config/etfs.yaml` | OPEN |
@@ -416,3 +493,9 @@ Method: every official band (security master `PricRg`, Feb 2024 - 4 Sep 2026, 7,
 | AMFI / AMC notices: no plain-HTTP listing | notices | OPEN (D37) |
 | Missing-NAV band fallback switch date (prev close -> latest NAV, 10-24 Oct 2025) | nav_t2 bands | OPEN (D38) |
 | Union Budget sessions 1 Feb 2025 / 1 Feb 2026 (inferred from data) and their raw files | calendars, backfill | OPEN (D38): circular not read; raw not yet downloaded |
+| Creation-unit sizes of the 18 R20 controls | units / valve status for controls | OPEN (D42): SIDs not read; divisor hints in D42 |
+| Renames ICICINIFTY->NIFTYIETF, ICICISENSX->SENSEXIETF, SETFNIF50->SBINIFTY50 (not in NSE symbolchange.csv) | `former_symbols` | PARTLY (D42): price continuity (+ ISIN for SBI) |
+| FBIL public feed lag (~1 week?) and HKD/INR absence | `usdinr_ref`, HK fair value | OPEN (D43): data to 9 Nov when asked 18 Nov; no HKD 2021-2026 |
+| Yahoo 60m history depth (~730 d) and bar alignment (on the hour) | free fair value, beta | OPEN (D43): untested, every request 429 |
+| Moment Yahoo's NQ=F/ES=F switch contract (roll date vs expiry) | roll guard | OPEN (D43): both candidates guarded |
+| S_a timing: FX at US close vs fund's own FX time (FBIL/15:30/17:00 IST) | `fv_in_fx_a` | OPEN (D43, D36): owner decision, schema bump if changed |

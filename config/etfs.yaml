@@ -12,6 +12,9 @@
 #                 (NQ = E-mini Nasdaq-100, ES = E-mini S&P 500, a proxy per SPEC 6.2).
 #   creation_unit_size  units in one creation/redemption basket.
 #   verify        names of fields not yet confirmed against a primary source.
+#   former_symbols  earlier NSE trading symbols of the fund (NSE renames tickers, e.g.
+#                 SETFNIF50 -> SBINIFTY50 on 30 Oct 2026). Rows of the old symbol dated on or
+#                 before `until` are relabelled to the current symbol when cleaning (D42).
 #
 # creation_unit_size (request R6, sources checked 2026-11-14, see DECISIONS D36):
 #   MON100     250,000  Motilal Oswal Nasdaq 100 ETF SID dated 29 May 2026, pp. 56 and 67
@@ -69,6 +72,10 @@ etfs:
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: null
     verify: [bloomberg]
+    former_symbols:
+      - symbol: N100
+        until: 2021-06-15
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): N100 -> MON100 effective 16-JUN-2021; MON100 PREV_CLOSE on 2021-06-16 = N100 close 1021.86"
 
   - symbol: MASPTOP50
     name: "Mirae Asset S&P 500 Top 50 ETF"
@@ -188,6 +195,10 @@ etfs:
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: "Bullion module (v2); not tracked yet. NSE symbol SILVERBEES; AMFI scheme name is 'Nippon India Silver ETF'."
     verify: []
+    former_symbols:
+      - symbol: NETFSILVER
+        until: 2022-05-09
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): NETFSILVER -> SILVERBEES effective 10-MAY-2022"
 
   - symbol: JUNIORBEES
     name: "Nippon India ETF Nifty Next 50 Junior BeES"
@@ -239,3 +250,370 @@ etfs:
     bloomberg: {etf: null, index: null, future: null, fx: null}
     notes: "Domestic control: large Nifty 50 ETF from a different fund house than NIFTYBEES."
     verify: []
+    former_symbols:
+      - symbol: ICICINIFTY
+        until: 2023-12-19
+        source: "Not in NSE symbolchange.csv (read 2026-11-18). Inferred from NSE full bhavcopy: ICICINIFTY last trades 2023-12-19 (close 235.61); NIFTYIETF first trades 2023-12-20 with PREV_CLOSE 235.61; same day as ICICI's listed renames. BSE files carry the same ISIN INF109K012R6 as ICICINIFTY."
+
+  # ---- R20 domestic controls (DECISIONS D42). ISIN from NSE eq_etfseclist.csv (2026-11-16);
+  # AMFI code matched by ISIN in NAVAll.txt (2026-11-16) and present in AMFI NAV history
+  # from 2021 (or launch); avg traded value Jun-Oct 2026 in the notes is from NSE full bhavcopy.
+  # Creation-unit sizes not read from scheme documents yet (verify).
+
+  - symbol: ITBEES
+    name: "Nippon India ETF Nifty IT"
+    amc: "Nippon India"
+    isin: INF204KB15V2
+    amfi_scheme_code: 148408
+    underlying_index: "Nifty IT"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2020-07-01. Avg traded value Jun-Oct 2026 Rs 58.10 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: NETFIT
+        until: 2022-05-09
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): NETFIT -> ITBEES effective 10-MAY-2022"
+
+  - symbol: PSUBNKBEES
+    name: "Nippon India ETF Nifty PSU Bank BeES"
+    amc: "Nippon India"
+    isin: INF204KB16I7
+    amfi_scheme_code: 140089
+    underlying_index: "Nifty PSU Bank"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2007-11-01. Avg traded value Jun-Oct 2026 Rs 21.87 cr/day."
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: MID150BEES
+    name: "Nippon India ETF Nifty Midcap 150"
+    amc: "Nippon India"
+    isin: INF204KB1V68
+    amfi_scheme_code: 146271
+    underlying_index: "Nifty Midcap 150"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2019-02-04. Avg traded value Jun-Oct 2026 Rs 18.82 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: NETFMID150
+        until: 2022-05-09
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): NETFMID150 -> MID150BEES effective 10-MAY-2022"
+
+  - symbol: CPSEETF
+    name: "CPSE ETF"
+    amc: "Nippon India"
+    isin: INF457M01133
+    amfi_scheme_code: 140107
+    underlying_index: "Nifty CPSE"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2014-04-04. Avg traded value Jun-Oct 2026 Rs 9.07 cr/day."
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: PHARMABEES
+    name: "Nippon India Nifty Pharma ETF"
+    amc: "Nippon India"
+    isin: INF204KC1089
+    amfi_scheme_code: 149008
+    underlying_index: "Nifty Pharma"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2021-07-07. Avg traded value Jun-Oct 2026 Rs 13.87 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: NETFPHARMA
+        until: 2022-05-09
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): NETFPHARMA -> PHARMABEES effective 10-MAY-2022"
+
+  - symbol: NEXT50IETF
+    name: "ICICI Prudential Nifty Next 50 ETF"
+    amc: "ICICI Prudential"
+    isin: INF109KC1NS5
+    amfi_scheme_code: 144587
+    underlying_index: "Nifty Next 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2018-08-30. Avg traded value Jun-Oct 2026 Rs 7.29 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: ICICINXT50
+        until: 2023-12-19
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): ICICINXT50 -> NEXT50IETF effective 20-DEC-2023"
+
+  - symbol: ICICIB22
+    name: "ICICI Prudential BHARAT 22 ETF"
+    amc: "ICICI Prudential"
+    isin: INF109KB15Y7
+    amfi_scheme_code: 141957
+    underlying_index: "BSE Bharat 22"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2017-11-28. Avg traded value Jun-Oct 2026 Rs 4.80 cr/day."
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: SENSEXIETF
+    name: "ICICI Prudential BSE Sensex ETF"
+    amc: "ICICI Prudential"
+    isin: INF346A01034
+    amfi_scheme_code: 101705
+    underlying_index: "BSE Sensex"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2014-07-23. Avg traded value Jun-Oct 2026 Rs 1.66 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: ICICISENSX
+        until: 2023-12-19
+        source: "Not in NSE symbolchange.csv (read 2026-11-18). Inferred from NSE full bhavcopy: ICICISENSX last trades 2023-12-19 (close 795.70); SENSEXIETF first trades 2023-12-20 with PREV_CLOSE 795.70; same day as ICICI's listed renames (ICICINXT50, ICICITECH, ICICIFMCG, ICICIBANKP)"
+
+  - symbol: HDFCSML250
+    name: "HDFC NIFTY Smallcap 250 ETF"
+    amc: "HDFC"
+    isin: INF179KC1FB2
+    amfi_scheme_code: 151375
+    underlying_index: "Nifty Smallcap 250"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2023-02-21. Avg traded value Jun-Oct 2026 Rs 30.32 cr/day."
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: HDFCBSE500
+    name: "HDFC BSE 500 ETF"
+    amc: "HDFC"
+    isin: INF179KC1EZ4
+    amfi_scheme_code: 151376
+    underlying_index: "BSE 500"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2023-02-21. Avg traded value Jun-Oct 2026 Rs 6.15 cr/day."
+    verify: [bloomberg, creation_unit_size]
+
+  - symbol: HDFCNIFTY
+    name: "HDFC NIFTY 50 ETF"
+    amc: "HDFC"
+    isin: INF179KC1965
+    amfi_scheme_code: 135853
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2015-12-16. Avg traded value Jun-Oct 2026 Rs 7.71 cr/day. 10:1 unit split, price ex-date 2021-02-17 (config/corporate_actions.yaml)."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: HDFCNIFETF
+        until: 2023-06-15
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): HDFCNIFETF -> HDFCNIFTY effective 16-JUN-2023"
+
+  - symbol: NIFTYETF
+    name: "Mirae Asset Nifty 50 ETF"
+    amc: "Mirae Asset"
+    isin: INF769K01EG9
+    amfi_scheme_code: 145633
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2018-11-26. Avg traded value Jun-Oct 2026 Rs 7.40 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: MAN50ETF
+        until: 2023-08-31
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): MAN50ETF -> NIFTYETF effective 01-SEP-2023"
+
+  - symbol: MIDCAPETF
+    name: "Mirae Asset Nifty Midcap 150 ETF"
+    amc: "Mirae Asset"
+    isin: INF769K01IC9
+    amfi_scheme_code: 149918
+    underlying_index: "Nifty Midcap 150"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2022-03-15. Avg traded value Jun-Oct 2026 Rs 6.24 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: MAM150ETF
+        until: 2023-08-31
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): MAM150ETF -> MIDCAPETF effective 01-SEP-2023"
+
+  - symbol: NIFTY1
+    name: "Kotak Nifty 50 ETF"
+    amc: "Kotak Mahindra"
+    isin: INF174K014P6
+    amfi_scheme_code: 112351
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2010-02-11. Avg traded value Jun-Oct 2026 Rs 4.88 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: KOTAKNIFTY
+        until: 2024-03-19
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): KOTAKNIFTY -> NIFTY1 effective 20-MAR-2024; same ISIN INF174K014P6 under both symbols in UDiFF and the security master"
+
+  - symbol: NIFTYBETA
+    name: "UTI Nifty 50 ETF"
+    amc: "UTI"
+    isin: INF789F1AZC0
+    amfi_scheme_code: 135320
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2015-09-03. Avg traded value Jun-Oct 2026 Rs 2.73 cr/day. 10:1 unit split, price ex-date 2023-09-25 (config/corporate_actions.yaml)."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: UTINIFTETF
+        until: 2025-12-23
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): UTINIFTETF -> NIFTYBETA effective 24-DEC-2025; same ISIN INF789F1AZC0 under both symbols in UDiFF"
+
+  - symbol: BANKBETA
+    name: "UTI Nifty Bank ETF"
+    amc: "UTI"
+    isin: INF789F1AUV1
+    amfi_scheme_code: 148173
+    underlying_index: "Nifty Bank"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2020-09-03. Avg traded value Jun-Oct 2026 Rs 3.21 cr/day. 10:1 unit split, price ex-date 2021-02-17 (config/corporate_actions.yaml)."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: UTIBANKETF
+        until: 2025-12-23
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): UTIBANKETF -> BANKBETA effective 24-DEC-2025; same ISIN INF789F1AUV1 under both symbols in UDiFF"
+
+  - symbol: MOM100
+    name: "Motilal Oswal Nifty Midcap 100 ETF"
+    amc: "Motilal Oswal"
+    isin: INF247L01023
+    amfi_scheme_code: 114456
+    underlying_index: "Nifty Midcap 100"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2011-02-04. Avg traded value Jun-Oct 2026 Rs 2.71 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: M100
+        until: 2021-06-15
+        source: "NSE symbolchange.csv (nsearchives.nseindia.com/content/equities/symbolchange.csv, read 2026-11-18): M100 -> MOM100 effective 16-JUN-2021"
+
+  - symbol: SBINIFTY50
+    name: "SBI Nifty 50 ETF"
+    amc: "SBI"
+    isin: INF200KA1FS1
+    amfi_scheme_code: 135106
+    underlying_index: "Nifty 50"
+    underlying_market: IN
+    currency: INR
+    asset_class: equity
+    group: control
+    tracked: false
+    futures_proxy: null
+    creation_unit_size: null
+    bloomberg: {etf: null, index: null, future: null, fx: null}
+    notes: "Domestic control (R20). Listed 2015-07-27. Avg traded value Jun-Oct 2026 Rs 22.53 cr/day."
+    verify: [bloomberg, creation_unit_size]
+    former_symbols:
+      - symbol: SETFNIF50
+        until: 2026-10-29
+        source: "Not yet in NSE symbolchange.csv (read 2026-11-18). UDiFF shows ISIN INF200KA1FS1 as SETFNIF50 through 2026-10-29 and as SBINIFTY50 from 2026-10-30; SBINIFTY50 PREV_CLOSE on 2026-10-30 = SETFNIF50 close 247.34 on 2026-10-29"

@@ -38,7 +38,10 @@ NAVs.
    skipped, so this costs almost nothing), and downloads the AMFI history window again with
    force. The new copy is stored beside the old one as `.v2`; the build uses the newest.
    One source failing does not stop the others.
-2. **build**: raw files to clean tables to `etf_day` (about 3 minutes).
+   Both phases then run the **catch-up** (below) and, before any of this, the **network
+   check** (below).
+2. **build**: raw files to clean tables to `etf_day` (about 4 minutes at normal priority;
+   it re-reads every raw file, so it grows slowly with history).
 3. **export**: writes `exports/research/<date>/` and `LATEST.txt` (skipped if the build failed).
 4. **alerts**: sends new Telegram alerts. With no Telegram credentials this step prints a
    warning (and lists what it *would* have sent) and the run still counts as OK.
@@ -49,6 +52,50 @@ can fire.
 
 On a day NSE was closed the command prints "NSE was closed on ..." and exits 0. This includes
 Saturdays, Sundays and holidays. Diwali Muhurat sessions are real sessions (D24) and do run.
+
+### Network check (offline fail-fast)
+
+Before downloading anything, the collect step checks that the Mac is online: it looks up
+and sends one small request to `www.amfiindia.com`, then `www.bseindia.com`, then
+`query1.finance.yahoo.com`, 5 seconds each, and stops at the first that answers (any answer,
+even an error page, proves the network works). NSE is not used for this check.
+
+* If none answers, the collect step fails within seconds with
+  `offline (no network): no download tried. Checked ...` and names what each site said.
+  Build, export and alerts are then **skipped** with the reason "offline (no network)"
+  (nothing new was downloaded, and Telegram could not be reached anyway). The run record
+  and `etfp status` show all of this; the exit code is 1.
+* During the downloads, if three downloads in a row fail to connect at all and they were
+  aimed at at least two different websites, the run decides the network went down and
+  marks every remaining download `not tried: network down ...` instead of retrying each for
+  a minute. If nothing at all was downloaded in that run it is treated like offline (build,
+  export and alerts skipped).
+* Before this existed (17 Nov 2026), an offline evening run spent 50 minutes retrying 17
+  sources and then rebuilt and alerted on stale data.
+
+What to do: nothing special. Re-run when the network is back
+(`uv run etfp run daily --phase evening`), or let the next scheduled run pick it up; the
+catch-up below fetches the missed day's dated files.
+
+### Catch-up of missed sessions
+
+Each run works on one trading day. Without help, a day whose evening AND morning runs both
+failed (Mac off, offline, a source down) would never be downloaded by a later run. So every
+`run daily` (both phases) also looks back **7 calendar days** before the day it processes
+and downloads the *dated* files of each NSE session that are still missing from `data/raw`:
+NSE bhavcopy, UDiFF, security master, SLB files, BSE bhavcopy, the AMFI history window for
+that day, and Yahoo bars (while Yahoo still holds them).
+
+* A file already stored is never downloaded again (the raw store is checked first). Usually
+  the catch-up finds nothing and makes no request at all.
+* A 404 for an older day is remembered in `data/state/backfill_state.json` (note "during
+  daily catch-up"), exactly like a backfill, so a file NSE never published is not asked for
+  every day. `uv run etfp backfill --from <day> --retry-unavailable` asks again.
+* "Latest file only" snapshots (NSE ETF list, AMFI NAVAll, IBJA, SEBI RSS) cannot be caught
+  up; notices already use a 7-day window.
+* The output shows `NOTE        catch-up: N missing file(s) from earlier sessions: <days>`,
+  and the run record lists them under `catch_up_days`.
+* For a gap older than 7 days, use `uv run etfp backfill --from <day>` (section 5).
 
 ### Muhurat Sunday sessions
 
@@ -80,6 +127,14 @@ launchctl load ~/Library/LaunchAgents/com.etfp.daily-morning.plist
 
 `launchd-plist` prints only the plist to the screen (the Muhurat note goes to the error
 output), so the `>` redirect gives a clean file. `plutil -lint` must say `OK` for both.
+
+**Reinstall once if you installed the daily jobs before 18 Nov 2026.** The old plists said
+`ProcessType = Background`, and macOS throttles such jobs hard: plain Python ran about 5x
+slower under that policy on this Mac, which is why the evening build took 29 minutes from
+launchd but about 5 minutes from Terminal. The daily plists now say `Standard`. To pick that
+up: `launchctl unload` each daily plist, regenerate it with the two `launchd-plist` lines
+above, and `launchctl load` it again (see "Uninstall a job" below). The recorder plist
+(`com.etfp.inav`) is unchanged.
 
 ### Check that they are loaded
 
@@ -116,7 +171,8 @@ On newer macOS versions `launchctl load` and `unload` still work; the modern spe
 * Asleep at the scheduled time: `launchd` normally runs the job when the Mac wakes up. The
   job itself holds the Mac awake (`caffeinate`) while it runs.
 * Powered off or lid closed without power: the run is missed. The gap is not harmful (raw
-  files are fetched by date), so just re-run the missed day (section 4).
+  files are fetched by date): the next run's catch-up downloads the missed sessions' dated
+  files if they are at most 7 days old. You can also re-run the missed day (section 4).
 * Changing a launchd job's time does not change the code: the run always works out which
   trading day it is processing (today in the evening, the previous session in the morning).
 

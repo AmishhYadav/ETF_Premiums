@@ -14,7 +14,7 @@ from typing import Annotated
 
 import typer
 
-from etfp import __version__, calendars, ops, paths, recorder
+from etfp import __version__, calendars, netcheck, ops, paths, recorder
 from etfp.collect import jobs
 from etfp.collect.backfill_state import STATE_FILE_NAME, BackfillState
 from etfp.config import CollectSettings, load_collect_settings
@@ -264,6 +264,90 @@ def collect_ibja() -> None:
             typer.echo(f"FAILED {type(exc).__name__}: {exc}", err=True)
             raise typer.Exit(1) from None
     typer.echo(f"{'EXISTS' if record.duplicate else 'OK'} {record.relpath} {record.size_bytes}")
+
+
+# -- free fair-value inputs (D43): Yahoo 60m history and FBIL reference rates --------
+YAHOO_HISTORY_GAP_S = 10.0  # seconds between Yahoo requests in a history run (be polite)
+
+
+@collect_app.command("yahoo-history")
+def collect_yahoo_history(
+    symbols: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--symbol", help="Yahoo symbol (repeatable); default NQ=F ES=F USDINR=X HKDINR=X"
+        ),
+    ] = None,
+) -> None:
+    """Save ~728 days of 60-minute bars per symbol, one request each (>= 10 s apart).
+
+    Stops at the first refusal (HTTP 429/403): Yahoo is then blocking us and asking again
+    would only make it worse. Nothing is retried after a block.
+    """
+    from etfp.collect import yahoo_intraday
+    from etfp.http import SourceBlockedError, SourceError
+
+    _configure_logging()
+    store = RawStore(paths.raw_dir())
+    wanted = symbols or list(yahoo_intraday.HISTORY_SYMBOLS)
+    settings = load_collect_settings()
+    failed = False
+    with PoliteClient(
+        min_interval_s={"yahoo.com": YAHOO_HISTORY_GAP_S},
+        max_retries=1,
+        timeout_s=_BULK_TIMEOUT_S,
+        default_interval_s=settings.http.default_interval_s,
+    ) as client:
+        for symbol in wanted:
+            try:
+                record = yahoo_intraday.fetch_history(client, store, symbol, now=now_ist())
+            except SourceBlockedError as exc:
+                typer.echo(f"BLOCKED {symbol}: {exc}. Stopping; not asking again.", err=True)
+                raise typer.Exit(1) from None
+            except SourceError as exc:
+                typer.echo(f"FAILED {symbol}: {type(exc).__name__}: {exc}", err=True)
+                failed = True
+                continue
+            status = "EXISTS" if record.duplicate else "OK"
+            typer.echo(f"{status} {record.relpath} {record.size_bytes}")
+    if failed:
+        raise typer.Exit(1)
+
+
+@collect_app.command("fbil")
+def collect_fbil(
+    start: Annotated[
+        str | None, typer.Option("--from", help="First date YYYY-MM-DD (default: 31 days back)")
+    ] = None,
+    end: Annotated[
+        str | None, typer.Option("--to", help="Last date YYYY-MM-DD (default today)")
+    ] = None,
+) -> None:
+    """Save FBIL rupee reference rates for a date range (one request per calendar year)."""
+    from datetime import timedelta
+
+    from etfp.collect import fbil_refrates
+    from etfp.http import SourceError
+
+    _configure_logging()
+    today = today_ist()
+    hi = _parse_day(end, "--to") if end else today
+    lo = (
+        _parse_day(start, "--from")
+        if start
+        else hi - timedelta(days=fbil_refrates.DAILY_WINDOW_DAYS - 1)
+    )
+    store = RawStore(paths.raw_dir())
+    polite = {fbil_refrates.HOST: 3.0}
+    with PoliteClient(min_interval_s=polite, timeout_s=_BULK_TIMEOUT_S) as client:
+        for a, b in fbil_refrates.windows(lo, hi):
+            try:
+                record = fbil_refrates.fetch(client, store, today, a, b)
+            except SourceError as exc:
+                typer.echo(f"FAILED {a}..{b}: {type(exc).__name__}: {exc}", err=True)
+                raise typer.Exit(1) from None
+            status = "EXISTS" if record.duplicate else "OK"
+            typer.echo(f"{status} {record.relpath} {record.size_bytes}")
 
 
 @collect_app.command("notices")
@@ -575,8 +659,17 @@ def alerts(
 _EVENING_ONLY_SOURCES = (jobs.ETF_LIST, jobs.NAVALL)
 
 
+def _probe_network() -> netcheck.ProbeResult:
+    """The connectivity check before downloading (a function so tests can replace it)."""
+    return netcheck.probe()
+
+
 def _collect_step(day: date, phase: ops.Phase) -> ops.StepReport:
     """Download the day's raw files. A failed source is reported; the others still run.
+
+    0. Network check first: if none of a few well-known sites answers within seconds, the
+       step fails at once with "offline (no network)" instead of retrying every source for
+       most of an hour (2026-11-17). ``ops.run_daily`` then skips the rest of the run.
 
     Evening: every source `jobs.plan_daily` supports, for `day`. Files already stored are
     skipped, so a re-run is cheap and safe.
@@ -588,7 +681,22 @@ def _collect_step(day: date, phase: ops.Phase) -> ops.StepReport:
       2. the AMFI history window WITH force: overseas NAVs for `day` are published the next
          morning, so the window saved last evening is incomplete. The raw store keeps both
          versions (the new bytes go beside the old as ".v2"); cleaning uses the newest.
+
+    Both phases then run the catch-up (`jobs.plan_catch_up`): dated files of NSE sessions in
+    the 7 calendar days before `day` that are still missing (both runs of a day failed). A
+    404 there is remembered in data/state/backfill_state.json, like in a backfill, so a file
+    NSE never published is not asked for every day.
+
+    One network breaker is shared by all passes: several connection failures in a row on
+    different websites stop the remaining downloads ("network down").
     """
+    probe = _probe_network()
+    if not probe.online:
+        return ops.StepReport(
+            "failed",
+            f"offline (no network): no download tried. Checked {probe.summary()}",
+            {ops.OFFLINE: True, "probe": probe.as_data()},
+        )
     now = now_ist()
     if phase == "evening":
         passes = [(list(jobs.DAILY_SOURCES), False)]
@@ -598,24 +706,53 @@ def _collect_step(day: date, phase: ops.Phase) -> ops.StepReport:
         passes = [(others, False), ([jobs.AMFI_HISTORY], True)]
     settings = load_collect_settings()
     store = RawStore(paths.raw_dir())
+    state = BackfillState.load(paths.state_dir() / STATE_FILE_NAME)
+    breaker = jobs.NetworkBreaker()
     outcomes: list[jobs.Outcome] = []
+
+    def show(outcome: jobs.Outcome) -> None:
+        _print_outcome(outcome, quiet_skips=False)
+
     with _build_bulk_client(settings) as client:
         for sources, force in passes:
             plan = jobs.plan_daily(day, sources, now=now)
             for note in plan.notes:
                 typer.echo(f"NOTE        {note}")
             outcomes += jobs.run_units(
-                plan.units,
+                plan.units, client, store, force=force, on_outcome=show, breaker=breaker
+            )
+        catch_up = jobs.plan_catch_up(day, store, now=now, state=state)
+        for note in catch_up.notes:
+            typer.echo(f"NOTE        {note}")
+        caught: list[jobs.Outcome] = []
+        if catch_up.units:
+            caught = jobs.run_units(
+                catch_up.units,
                 client,
                 store,
-                force=force,
-                on_outcome=lambda o: _print_outcome(o, quiet_skips=False),
+                state=state,
+                on_outcome=show,
+                breaker=breaker,
+                state_note="daily catch-up",
             )
+        outcomes += caught
     counts = jobs.summarize(outcomes)
     detail = (
         f"{counts['fetched']} fetched, {counts['exists']} already stored, "
         f"{counts['unavailable']} not available, {counts['failed']} FAILED"
     )
+    if caught:
+        late = jobs.summarize(caught)
+        detail += f"; catch-up of earlier sessions: {late['fetched']} fetched"
+    data: dict[str, object] = {"counts": counts}
+    if catch_up.units:
+        data["catch_up_days"] = sorted({u.day.isoformat() for u in catch_up.units})
+    if breaker.tripped:
+        detail += f"; {breaker.reason}"
+        data["network_down"] = breaker.reason
+        if counts["fetched"] == 0:
+            # Nothing at all came in: same situation as the probe failing.
+            data[ops.OFFLINE] = True
     failed = [
         {
             "source": o.unit.source,
@@ -628,8 +765,9 @@ def _collect_step(day: date, phase: ops.Phase) -> ops.StepReport:
     ]
     if failed:
         names = ", ".join(sorted({f["source"] for f in failed}))
-        return ops.StepReport("failed", f"{detail} (failed: {names})", {"failed": failed})
-    return ops.StepReport("ok", detail, {"counts": counts})
+        data["failed"] = failed
+        return ops.StepReport("failed", f"{detail} (failed: {names})", data)
+    return ops.StepReport("ok", detail, data)
 
 
 def _build_step() -> ops.StepReport:

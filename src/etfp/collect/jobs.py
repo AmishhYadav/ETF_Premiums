@@ -15,8 +15,12 @@ Rules the executor enforces (project rules in CLAUDE.md):
   Retrying a block is what gets an address banned.
 * Five failures in a row to one website also stop that website for this run (it is down;
   hammering it helps nobody).
-* In backfill, a 404 is remembered in ``data/state`` as "not available" and not asked
-  again. In daily, a 404 is a failure: today's file should exist, and a human should look.
+* Three "could not connect at all" errors in a row, spread over at least two different
+  websites, stop ALL remaining downloads of the run: when several unrelated sites are
+  unreachable at once, the problem is our own network, not theirs (``NetworkBreaker``).
+* In backfill (and the daily catch-up of older days), a 404 is remembered in ``data/state``
+  as "not available" and not asked again. For the run's own day, a 404 is a failure:
+  today's file should exist, and a human should look.
 """
 
 from __future__ import annotations
@@ -46,6 +50,7 @@ from etfp.http import (
     SourceBlockedError,
     SourceError,
     SourceNotFoundError,
+    is_connection_failure,
 )
 from etfp.rawstore import RawRecord, RawStore
 from etfp.timeutil import IST, require_aware
@@ -106,6 +111,8 @@ SEBI_HOST = notices.SEBI_HOST
 # stay small: a 7-day window is about 6 MB.
 AMFI_WINDOW_DAYS = 7
 MAX_CONSECUTIVE_FAILURES = 5
+# Connection failures in a row (over at least two websites) that mean "our network is down".
+NETWORK_DOWN_AFTER = 3
 
 Fetcher = Callable[[PoliteClient, RawStore], RawRecord]
 Status = Literal["fetched", "exists", "unavailable", "failed"]
@@ -479,7 +486,96 @@ def plan_backfill(start: date, end: date, sources: Sequence[str], *, now: dateti
     return Plan(units, notes)
 
 
+# -- catch-up of missed sessions -------------------------------------------------------
+#
+# Each daily run works on ONE trading day (today in the evening, the previous session in the
+# morning). If both runs for a day fail (laptop offline, asleep, a source down), no later run
+# would ever ask for that day's files again. The catch-up closes that hole: every daily run
+# also looks back a few calendar days and fetches the dated files that are still missing.
+CATCH_UP_DAYS = 7
+# Sources that can be asked for any past day. The "latest only" snapshots (NSE ETF list,
+# AMFI NAVAll, IBJA, SEBI RSS) cannot be caught up, and notices already use a 7-day window.
+CATCH_UP_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
+
+
+def plan_catch_up(
+    day: date,
+    store: RawStore,
+    *,
+    now: datetime,
+    state: BackfillState | None = None,
+    days_back: int = CATCH_UP_DAYS,
+    sources: Sequence[str] = CATCH_UP_SOURCES,
+) -> Plan:
+    """Dated files for NSE sessions in the ``days_back`` calendar days BEFORE ``day`` that
+    are not in the raw store yet (and not known to be unavailable).
+
+    Each missed session gets exactly the units ``plan_daily`` would have planned for it, so
+    file names match and a file already stored is never asked for again. ``day`` itself is
+    left out: the run's own plan covers it.
+    """
+    require_aware(now, "now")
+    try:
+        missed_days = calendars.sessions("IN", day - timedelta(days=days_back), day)
+    except ValueError:  # before the calendar starts: nothing to catch up
+        return Plan([], [])
+    units: list[Unit] = []
+    notes: list[str] = []
+    wanted = [s for s in sources if s in CATCH_UP_SOURCES]
+    for session in missed_days:
+        if session >= day:
+            continue
+        plan = plan_daily(session, wanted, now=now)
+        for unit in plan.units:
+            if store.exists(unit.source, unit.day, unit.name):
+                continue
+            if state is not None and state.is_unavailable(unit.source, unit.day, unit.name):
+                continue
+            units.append(unit)
+        notes += [n for n in plan.notes if n.startswith(YAHOO)]  # "too old for Yahoo"
+    if units:
+        days_text = ", ".join(sorted({u.day.isoformat() for u in units}))
+        notes.append(f"catch-up: {len(units)} missing file(s) from earlier sessions: {days_text}")
+    return Plan(units, notes)
+
+
 # -- running ------------------------------------------------------------------------
+
+
+class NetworkBreaker:
+    """Stops a whole run when our own network is down, not just one website.
+
+    The per-website rule (5 failures in a row) cannot tell "NSE is down" from "the laptop
+    is offline". This one watches connection failures across ALL websites: if the last
+    ``limit`` downloads each failed to connect at all, and they were aimed at at least two
+    different websites, the problem must be on our side, so every remaining download is
+    reported as "not tried: network down" instead of being retried for minutes each.
+
+    Any answer from a server (a file, a 404, even a block) resets the count. One breaker
+    can be shared by several ``run_units`` calls in the same run.
+    """
+
+    def __init__(self, limit: int = NETWORK_DOWN_AFTER) -> None:
+        self.limit = limit
+        self._streak: list[str] = []  # hosts of the latest connection failures, in order
+        self.reason: str | None = None  # set once tripped
+
+    @property
+    def tripped(self) -> bool:
+        return self.reason is not None
+
+    def server_answered(self) -> None:
+        self._streak.clear()
+
+    def connection_failed(self, host: str) -> None:
+        self._streak.append(host)
+        hosts = sorted(set(self._streak))
+        if self.reason is None and len(self._streak) >= self.limit and len(hosts) >= 2:
+            self.reason = (
+                f"network down: {len(self._streak)} connection failures in a row across "
+                f"{', '.join(hosts)}; no further downloads tried in this run"
+            )
+            logger.error("%s", self.reason)
 
 
 def _not_found_hint(unit: Unit) -> str:
@@ -499,15 +595,20 @@ def run_units(
     state: BackfillState | None = None,
     retry_unavailable: bool = False,
     on_outcome: Callable[[Outcome], None] | None = None,
+    breaker: NetworkBreaker | None = None,
+    state_note: str = "backfill",
 ) -> list[Outcome]:
     """Fetch every Unit that is not already in the raw store; return one Outcome per unit.
 
     With `state` given (backfill mode) a 404 is recorded as "unavailable" and remembered;
     without it (daily mode) a 404 is a failure. Never raises for a failed download.
+    Pass one ``breaker`` to several calls so "network down" carries over between them.
+    ``state_note`` says in the state file which job recorded a 404 (backfill, catch-up).
     """
     outcomes: list[Outcome] = []
     stopped_hosts: dict[str, str] = {}  # host -> why we stopped talking to it
     streak: dict[str, int] = {}  # host -> consecutive failures
+    breaker = breaker if breaker is not None else NetworkBreaker()
 
     def done(outcome: Outcome) -> None:
         outcomes.append(outcome)
@@ -530,6 +631,9 @@ def run_units(
                     )
                 )
                 continue
+        if breaker.tripped:
+            done(Outcome(unit, "failed", f"not tried: {breaker.reason}"))
+            continue
         if unit.host in stopped_hosts:
             done(Outcome(unit, "failed", f"not tried: {stopped_hosts[unit.host]}"))
             continue
@@ -537,6 +641,7 @@ def run_units(
             record = unit.fetch(client, store)
         except SourceNotFoundError as exc:
             streak[unit.host] = 0  # the site answered; a 404 is not an outage
+            breaker.server_answered()
             # Normally a real HTTP 404. BSE instead answers 200 with a web page for a missing
             # file; its collector raises the same error with the real status code (200).
             what = (
@@ -551,19 +656,24 @@ def run_units(
                     unit.name,
                     status_code=exc.status_code,
                     url=exc.url,
-                    note=f"{what} during backfill",
+                    note=f"{what} during {state_note}",
                 )
                 done(Outcome(unit, "unavailable", f"{what}, recorded as not available"))
             else:
                 done(Outcome(unit, "failed", f"{what}: {_not_found_hint(unit)}"))
             continue
         except SourceBlockedError as exc:
+            breaker.server_answered()  # a block is an answer: the network works
             reason = f"blocked by {unit.host} (HTTP {exc.status_code}); no more requests to it"
             stopped_hosts[unit.host] = reason
             done(Outcome(unit, "failed", f"{exc}"))
             continue
         except Exception as exc:  # report loudly, keep the other sources going
             logger.warning("%s failed: %s: %s", unit.label, type(exc).__name__, exc)
+            if is_connection_failure(exc):
+                breaker.connection_failed(unit.host)
+            else:
+                breaker.server_answered()
             streak[unit.host] = streak.get(unit.host, 0) + 1
             if streak[unit.host] >= MAX_CONSECUTIVE_FAILURES:
                 stopped_hosts[unit.host] = (
@@ -573,6 +683,7 @@ def run_units(
             done(Outcome(unit, "failed", f"{kind}{exc}"))
             continue
         streak[unit.host] = 0
+        breaker.server_answered()
         if state is not None:
             state.forget(unit.source, unit.day, unit.name)  # it exists after all
         detail = f"{record.relpath} ({record.size_bytes} bytes"

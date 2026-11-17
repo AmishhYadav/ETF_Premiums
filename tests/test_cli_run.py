@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from etfp import calendars, cli, ops
+from etfp import calendars, cli, netcheck, ops
 from etfp.collect import jobs
 from etfp.config import load_collect_settings
 from etfp.timeutil import IST
@@ -29,6 +29,14 @@ REAL_HOLIDAYS = calendars.default_overrides_path()  # read before tests move the
 EVENING = datetime(2026, 11, 13, 19, 45, tzinfo=IST)  # Friday
 MONDAY_MORNING = datetime(2026, 11, 16, 10, 35, tzinfo=IST)
 SATURDAY = datetime(2026, 11, 14, 19, 45, tzinfo=IST)
+ONLINE = netcheck.ProbeResult(True, (netcheck.ProbeCheck("https://a.test/", True, "HTTP 200"),))
+OFFLINE = netcheck.ProbeResult(
+    False,
+    (
+        netcheck.ProbeCheck("https://a.test/", False, "DNS lookup failed (gaierror: no host)"),
+        netcheck.ProbeCheck("https://b.test/", False, "DNS lookup failed (gaierror: no host)"),
+    ),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +47,8 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(cli, "load_collect_settings", lambda: SETTINGS)
     monkeypatch.setattr(cli, "_configure_logging", lambda: None)
     monkeypatch.setattr(cli, "now_ist", lambda: EVENING)
+    # never touch the real network: pretend the connectivity check succeeded
+    monkeypatch.setattr(cli, "_probe_network", lambda: ONLINE)
     return tmp_path
 
 
@@ -232,6 +242,9 @@ class Recorder:
         self.plans: list[tuple[date, list[str]]] = []
         self.runs: list[dict[str, Any]] = []
         self.fail = fail
+        self.catch_up_days: list[date] = []
+        self.catch_up_units: list[jobs.Unit] = []
+        self.network_down = False
 
     def plan_daily(self, day: date, sources: list[str], *, now: datetime) -> jobs.Plan:
         self.plans.append((day, list(sources)))
@@ -241,12 +254,23 @@ class Recorder:
         ]
         return jobs.Plan(units, [])
 
+    def plan_catch_up(self, day: date, store, *, now: datetime, state=None) -> jobs.Plan:
+        self.catch_up_days.append(day)
+        return jobs.Plan(list(self.catch_up_units), [])
+
     def run_units(self, units, client, store, *, force=False, on_outcome=None, **kwargs):
         units = list(units)
-        self.runs.append({"sources": [u.source for u in units], "force": force})
+        self.runs.append(
+            {"sources": [u.source for u in units], "force": force, "state": kwargs.get("state")}
+        )
+        breaker = kwargs.get("breaker")
+        if self.network_down and breaker is not None:
+            breaker.reason = "network down: test"
         outcomes = []
         for unit in units:
-            if unit.source in self.fail:
+            if self.network_down:
+                outcomes.append(jobs.Outcome(unit, "failed", "not tried: network down: test"))
+            elif unit.source in self.fail:
                 outcomes.append(jobs.Outcome(unit, "failed", "HTTP 404: not published (yet?)"))
             else:
                 outcomes.append(jobs.Outcome(unit, "fetched", "ok"))
@@ -261,6 +285,7 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> Recorder:
     fake = Recorder()
     monkeypatch.setattr(jobs, "plan_daily", fake.plan_daily)
     monkeypatch.setattr(jobs, "run_units", fake.run_units)
+    monkeypatch.setattr(jobs, "plan_catch_up", fake.plan_catch_up)
     monkeypatch.setattr(cli, "_build_bulk_client", lambda settings: FakeClient())
     return fake
 
@@ -296,7 +321,8 @@ def test_morning_collect_forces_only_the_amfi_window_and_leaves_snapshots_alone(
     assert jobs.ETF_LIST not in first["sources"]
     assert jobs.BHAVCOPY in first["sources"]
     # pass 2: the AMFI history window is fetched again, forced, because the late NAVs are new
-    assert second == {"sources": [jobs.AMFI_HISTORY], "force": True}
+    assert second["sources"] == [jobs.AMFI_HISTORY]
+    assert second["force"] is True
 
 
 def test_collect_failure_names_the_source_and_keeps_going(
@@ -337,6 +363,85 @@ def test_a_failed_source_in_the_cli_does_not_stop_the_build_and_fails_the_run(
     assert fake.calls == ["build", "export", "alerts"]
     assert "FAILED      bhavcopy 2026-11-13" not in result.stdout  # printed to stderr, not stdout
     assert "FAILED      bhavcopy 2026-11-13" in result.stderr
+
+
+# -- offline fail-fast and catch-up --------------------------------------------------
+
+
+def test_offline_probe_fails_collect_at_once_and_tries_no_download(
+    rec: Recorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "_probe_network", lambda: OFFLINE)
+    report = cli._collect_step(date(2026, 11, 13), "evening")
+    assert report.status == "failed"
+    assert report.detail.startswith("offline (no network)")
+    assert "a.test: DNS lookup failed" in report.detail  # names what was checked
+    assert report.data[ops.OFFLINE] is True
+    assert len(report.data["probe"]) == 2
+    assert rec.plans == [] and rec.runs == [] and rec.catch_up_days == []
+
+
+def test_offline_run_skips_build_export_alerts_and_records_why(
+    rec: Recorder, monkeypatch: pytest.MonkeyPatch, isolated: Path
+) -> None:
+    monkeypatch.setattr(cli, "_probe_network", lambda: OFFLINE)
+    fake = FakeJobs()
+    monkeypatch.setattr(
+        cli,
+        "_real_steps",
+        lambda: ops.DailySteps(
+            collect=cli._collect_step, build=lambda: fake.step("build"),
+            export=lambda: fake.step("export"), alerts=lambda: fake.step("alerts"),
+        ),
+    )  # fmt: skip
+    result = runner.invoke(cli.app, ["run", "daily"])
+    assert result.exit_code == 1
+    assert fake.calls == []  # nothing built, exported or alerted on stale data
+    assert "[collect] FAILED" in result.stderr and "offline (no network)" in result.stderr
+    record = json.loads(
+        (isolated / "data/state/runs/2026-11-13_evening.json").read_text(encoding="utf-8")
+    )
+    assert record["outcome"] == "failed"
+    steps = {s["name"]: s for s in record["steps"]}
+    assert steps["collect"]["status"] == "failed"
+    assert steps["collect"]["data"]["offline"] is True
+    for name in ("build", "export", "alerts"):
+        assert steps[name]["status"] == "skipped"
+        assert "offline (no network)" in steps[name]["detail"]
+    status = runner.invoke(cli.app, ["status"])
+    assert "collect  FAILED" in status.output
+    assert "offline (no network)" in status.output
+
+
+def test_network_breaker_with_nothing_fetched_counts_as_offline(rec: Recorder) -> None:
+    rec.network_down = True
+    report = cli._collect_step(date(2026, 11, 13), "evening")
+    assert report.status == "failed"
+    assert "network down: test" in report.detail
+    assert report.data["network_down"] == "network down: test"
+    assert report.data[ops.OFFLINE] is True
+
+
+def test_catch_up_runs_after_the_day_with_the_backfill_state(rec: Recorder) -> None:
+    missed = date(2026, 11, 12)
+    rec.catch_up_units = [
+        jobs.Unit("nse_bhavcopy_full", missed, "x.csv", "example.test", fetch=lambda c, s: None)  # type: ignore[arg-type,return-value]
+    ]
+    report = cli._collect_step(date(2026, 11, 13), "evening")
+    assert report.status == "ok"
+    assert rec.catch_up_days == [date(2026, 11, 13)]
+    assert len(rec.runs) == 2
+    main, late = rec.runs
+    assert main["state"] is None  # today's 404 stays a failure
+    assert late["sources"] == ["nse_bhavcopy_full"]
+    assert late["state"] is not None  # an old day's 404 is remembered, not re-asked daily
+    assert report.data["catch_up_days"] == ["2026-11-12"]
+    assert "catch-up of earlier sessions: 1 fetched" in report.detail
+
+
+def test_morning_run_also_catches_up(rec: Recorder) -> None:
+    cli._collect_step(date(2026, 11, 13), "morning")
+    assert rec.catch_up_days == [date(2026, 11, 13)]
 
 
 # -- the build step ---------------------------------------------------------------------

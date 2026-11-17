@@ -17,7 +17,9 @@ they check ETF symbols against it.
 securities lending) come last; they read raw folders that may not exist yet (an empty
 table results) and, like the other cleaners, never touch the raw files.
 ``bullion_ref_daily`` (IBJA domestic gold/silver rates, the bullion reference price,
-``etfp.collect.ibja_rates``) runs after them the same way.
+``etfp.collect.ibja_rates``) runs after them the same way, then ``fx_ref_daily`` (FBIL
+rupee reference rates) and ``underlying_bar_values`` (free futures/FX bar chosen at
+15:30 IST and at the US close, with its staleness).
 
 Tables with no cleaner yet (``underlying_daily``, ``fx_daily``, ``etf_day``) are
 created EMPTY if they do not exist, so readers can query them; an existing one is
@@ -37,6 +39,7 @@ from etfp.clean import (
     china_etf,
     etf_master,
     feeder_nav,
+    fx_ref,
     inav_snapshots,
     manual_events,
     manual_fof,
@@ -46,6 +49,7 @@ from etfp.clean import (
     notices,
     prices_daily,
     slb,
+    underlying_values,
     units_daily,
 )
 from etfp.clean.common import CleanContext, CleanError
@@ -75,6 +79,8 @@ CLEANERS = (
     ("slb_daily", slb.DAILY),
     ("bullion_ref_daily", bullion_ref),
     ("notices", notices),  # SEBI/NSE notices with keyword guesses (candidates only)
+    ("fx_ref_daily", fx_ref),  # FBIL official rupee reference rates (D43)
+    ("underlying_bar_values", underlying_values),  # free futures/FX at 15:30 IST (D43)
 )
 
 

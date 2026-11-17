@@ -231,7 +231,8 @@ def load_underlying(raw_root: Path) -> Underlying:
     yahoo: dict[str, _Series] = {}
     if bars:
         allbars = pd.concat(bars, ignore_index=True)
-        allbars = allbars.drop_duplicates(["symbol", "ts"], keep="last")
+        # A 5m and a 60m bar can start at the same minute: they are different bars (D43).
+        allbars = allbars.drop_duplicates(["symbol", "ts", "interval_minutes"], keep="last")
         for name, grp in allbars.groupby("symbol", sort=True):
             end = np.array(
                 [
@@ -347,6 +348,8 @@ def fair_value_inputs(
             for tier in ("bloomberg", "yahoo"):
                 ft, st_, f1 = _level_at_india_close(etf, data, t, tier=tier)
                 fa, sa, f2 = _level_at_close(etf, data, a, tier=tier)
+                if tier == "yahoo" and use_fut and _free_roll_between(etf, a, t):
+                    ft = fa = math.nan  # continuous future may switch contract: no ratio
                 vals = {
                     "futures_t": ft if use_fut else math.nan,
                     "futures_a": fa if use_fut else math.nan,
@@ -384,6 +387,36 @@ def fair_value_inputs(
     return frame
 
 
+def _free_roll_between(etf: Etf, a: date | None, t: date) -> bool:
+    """A candidate contract switch of the free continuous future between the US close of
+    ``a`` and 15:30 IST on ``t`` (``fair_value.futures_roll_moments``, D43)."""
+    start, end = (_close_s(etf.underlying_market, a) if a else None), _close_s("IN", t)
+    if start is None or end is None:
+        return False
+    return fair_value.crosses_futures_roll(
+        pd.Timestamp(start, unit="s", tz="UTC").to_pydatetime(),
+        pd.Timestamp(end, unit="s", tz="UTC").to_pydatetime(),
+    )
+
+
+def _free_roll_around(etf: Etf, session: date) -> bool:
+    """A candidate switch (night or expiry-day open) between the previous session's close and
+    this session's close: the close-to-close future return would contain the calendar spread."""
+    market = etf.underlying_market
+    try:
+        prev = calendars.previous_session(market, session)  # type: ignore[arg-type]
+    except ValueError:
+        return False
+    start, end = _close_s(market, prev), _close_s(market, session)
+    if start is None or end is None:
+        return False
+    return fair_value.crosses_futures_roll(
+        pd.Timestamp(start, unit="s", tz="UTC").to_pydatetime(),
+        pd.Timestamp(end, unit="s", tz="UTC").to_pydatetime(),
+        include_expiry_open=True,
+    )
+
+
 def estimate_beta(etf: Etf, nav: pd.Series, data: Underlying) -> beta.BetaEstimate:
     """Beta of the fund against its future for the R12 window (NaN estimate if inputs are short)."""
     use_fut, use_fx = fair_value.fv_terms_for(etf)
@@ -406,6 +439,8 @@ def estimate_beta(etf: Etf, nav: pd.Series, data: Underlying) -> beta.BetaEstima
     for sess in sorted(sessions):
         for tier in ("bloomberg", "yahoo"):
             f, s, _ = _level_at_close(etf, data, sess, tier=tier)
+            if tier == "yahoo" and _free_roll_around(etf, sess):
+                continue  # this close may sit on the other side of a contract switch
             if not math.isnan(f) and (not use_fx or not math.isnan(s)):
                 fut[sess] = f
                 if use_fx:
@@ -953,6 +988,15 @@ def _symbol_frame(
     return df
 
 
+def _fx_ref_on(days: pd.Series, fx_ref: pd.DataFrame, pair: str) -> pd.Series:
+    """FBIL reference rate dated exactly on each day (NaN if none; never carried forward)."""
+    sub = fx_ref[fx_ref["pair"] == pair] if len(fx_ref) else fx_ref
+    if sub.empty:
+        return pd.Series(np.nan, index=days.index, dtype="float64")
+    by_day = dict(zip(sub["date"], sub["rate"].astype("float64"), strict=True))
+    return pd.Series([by_day.get(d, np.nan) for d in days], index=days.index, dtype="float64")
+
+
 def _add_rationed(df: pd.DataFrame) -> pd.Series:
     """``rationed``: pi above the threshold and no creation in the previous 20 rows."""
     out = pd.Series(pd.NA, index=df.index, dtype="boolean")
@@ -991,6 +1035,7 @@ def build_etf_day(
             "fof_monthly",
             "bse_prices",
             "trends_daily",
+            "fx_ref_daily",  # FBIL reference rates -> usdinr_ref (D43)
         )
     }
     sizes = units.creation_unit_sizes(cfg.universe)
@@ -1035,6 +1080,7 @@ def build_etf_day(
     )
     df = quality.add_quality_flags(df)
     df["rationed"] = _add_rationed(df)
+    df["usdinr_ref"] = _fx_ref_on(df["date"], tables["fx_ref_daily"], "USDINR")
 
     missing = [c for c in ETF_DAY_COLUMNS if c not in df.columns]
     extra = [c for c in df.columns if c not in ETF_DAY_COLUMNS]

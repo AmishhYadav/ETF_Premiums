@@ -16,7 +16,13 @@ import logging
 
 import pandas as pd
 
-from etfp.clean.common import CleanContext, CleanError, list_raw_files, parse_file
+from etfp.clean.common import (
+    CleanContext,
+    CleanError,
+    list_raw_files,
+    map_former_symbols,
+    parse_file,
+)
 from etfp.collect import nse_secmaster
 
 logger = logging.getLogger("etfp.clean")
@@ -29,7 +35,8 @@ def load(ctx: CleanContext, table: str) -> pd.DataFrame:
     """One row per (symbol, file_date) for every ETF, from every security-master file."""
     if _CACHE_KEY in ctx.cache:
         return ctx.cache[_CACHE_KEY]
-    symbols = ctx.etf_symbols()
+    # Former NSE symbols are read too and relabelled to the current one (symbol changes).
+    symbols = ctx.etf_symbols() | ctx.former_symbols()
     frames = []
     for rf in list_raw_files(ctx.raw_root, nse_secmaster.SOURCE):
         try:
@@ -49,7 +56,11 @@ def load(ctx: CleanContext, table: str) -> pd.DataFrame:
             ),
         )
         frame = frame[frame["symbol"].isin(symbols) & frame["series"].isin(list(_SERIES_PRIORITY))]
-        frames.append(frame)
+        frames.append(
+            map_former_symbols(
+                frame, ctx.universe, date_col="file_date", table=table, source_file=rf.relpath
+            )
+        )
     if frames:
         rows = pd.concat(frames, ignore_index=True)
         rows["_rank"] = rows["series"].map(_SERIES_PRIORITY)

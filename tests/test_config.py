@@ -53,7 +53,7 @@ def write(tmp_path: Path, text: str, name: str = "x.yaml") -> Path:
 # --------------------------------------------------------------------------
 def test_real_etf_file_loads():
     universe = load_etfs()
-    assert len(universe.symbols()) == 12
+    assert len(universe.symbols()) == 30  # 12 + 18 domestic controls (R20, D42)
     assert len(universe.tracked()) == 7
     assert [e.symbol for e in universe.tracked()] == [
         "MONQ50",
@@ -168,19 +168,12 @@ def test_verified_etf_rows(symbol, name, amc, code, isin, index, market, group):
 
 def test_etf_extras_futures_units_tracking():
     u = load_etfs()
-    assert {s: u.by_symbol(s).futures_proxy for s in u.symbols()} == {
+    proxies = {s: u.by_symbol(s).futures_proxy for s in u.symbols()}
+    assert {s: p for s, p in proxies.items() if p is not None} == {
         "MONQ50": "NQ",
         "MON100": "NQ",
         "MASPTOP50": "ES",
         "MAFANG": "ES",
-        "MAHKTECH": None,
-        "HNGSNGBEES": None,
-        "NIFTYBEES": None,
-        "GOLDBEES": None,
-        "SILVERBEES": None,
-        "JUNIORBEES": None,
-        "BANKBEES": None,
-        "NIFTYIETF": None,
     }
     assert u.by_symbol("HNGSNGBEES").creation_unit_size == 25000
     assert u.by_symbol("MAHKTECH").creation_unit_size == 800000

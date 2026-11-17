@@ -49,7 +49,7 @@ from etfp.timeutil import IST, now_ist
 
 logger = logging.getLogger("etfp.export")
 
-SCHEMA_VERSION = "1.5.0"
+SCHEMA_VERSION = "1.6.0"
 SCHEMA_CHANGELOG: list[dict[str, str]] = [
     {
         "version": "1.0.0",
@@ -144,6 +144,23 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "a verified event; published_ts is 00:00 IST when published_time_known is False) "
             "and bullion_ref_daily.parquet (D35; IBJA gold/silver reference rates, INR per "
             "gram, from Jul 2026)."
+        ),
+    },
+    {
+        "version": "1.6.0",
+        "date": "2026-11-18",
+        "changes": (
+            "No existing column changes meaning. MORE ROWS: NSE symbol changes are now "
+            "followed (DECISIONS D42, config former_symbols), so NIFTYIETF gains its history "
+            "before 2023-12-20 (as ICICINIFTY), MON100 before 2021-06-16 (as N100) and "
+            "SILVERBEES before 2022-05-10 (as NETFSILVER); re-run results using these funds "
+            "before those dates. 18 more domestic control ETFs (R20, D42; group control). "
+            "New etf_day column usdinr_ref: FBIL USD/INR reference rate dated the same day "
+            "(published about 13:00-13:30 IST, before the close), empty if missing, never "
+            "carried forward (D43). New file fx_ref_daily.parquet: all FBIL reference rates, "
+            "rupees per one unit of the foreign currency. fv_method stays nav_only until free "
+            "futures bars can be fetched; when they can, nights with a possible futures "
+            "contract switch fall back to nav_only (D43)."
         ),
     },
 ]
@@ -429,6 +446,14 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
         "string",
         "beta_scaled | no_futures_term (fund has no future, fv_beta = fv) | no_beta (estimation failed, see fv_beta_n).",
         source="build.py",
+    ),
+    # ---- rupee reference rate (covariate, D43) --------------------------------------------
+    "usdinr_ref": _c(
+        "float",
+        "FBIL USD/INR reference rate for t (the official daily rate many fund houses use for NAV; published about 13:00-13:30 IST, before the NSE close, so known at 15:30 IST). NaN when FBIL has no rate dated t (bank holidays, special sessions, or not yet public: the public feed lags about a week).",
+        "rupees per USD",
+        "",
+        "FBIL (fx_ref_daily)",
     ),
     # ---- premiums ---------------------------------------------------------------------------
     "prem_raw": _c(
@@ -1011,6 +1036,7 @@ COPIED_TABLES = (
     "valve_monthly",
     "notices",
     "bullion_ref_daily",
+    "fx_ref_daily",
 )
 """Clean tables copied as they are (their parquet files already have the registered types)."""
 MARKET_HOURS = (time(9, 10), time(15, 35))

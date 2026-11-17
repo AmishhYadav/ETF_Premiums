@@ -354,6 +354,164 @@ def test_a_success_resets_the_failure_streak(tmp_path: Path, server: Server):
     assert [o.status for o in out].count("fetched") == 2
 
 
+# -- run_units: the "network down" breaker ---------------------------------------------
+
+
+def offline_client(requests: list[httpx.Request], *, up: tuple[str, ...] = ()) -> PoliteClient:
+    """A client whose every request fails to connect (like a laptop with no network),
+    except for URLs containing one of ``up``."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if any(needle in str(request.url) for needle in up):
+            return httpx.Response(200, content=b"body\n")
+        raise httpx.ConnectError("[Errno 8] nodename nor servname provided", request=request)
+
+    return PoliteClient(
+        transport=httpx.MockTransport(handler), sleep=lambda s: None, rng=lambda: 0.0,
+        max_retries=1,
+    )  # fmt: skip
+
+
+def test_connection_failures_on_several_websites_stop_the_whole_run(tmp_path: Path):
+    plan = jobs.plan_daily(DAY, jobs.DAILY_SOURCES, now=NOW)
+    requests: list[httpx.Request] = []
+    with offline_client(requests) as client:
+        out = jobs.run_units(plan.units, client, RawStore(tmp_path))
+    assert all(o.status == "failed" for o in out)
+    tried = [o for o in out if not o.detail.startswith("not tried")]
+    # The first units are all NSE (one website), so the breaker waits until a second
+    # website (AMFI) also fails to connect, then stops everything else.
+    hosts = [o.unit.host for o in tried]
+    assert hosts[-1] != jobs.NSE_HOST and len(set(hosts)) == 2
+    assert len(tried) < len(out)
+    assert len(requests) == 2 * len(tried)  # one retry each (max_retries=1), then the stop
+    skipped = out[len(tried) :]
+    assert all("network down" in o.detail for o in skipped)
+    assert "amfiindia.com" in skipped[0].detail and "nseindia.com" in skipped[0].detail
+    assert "ConnectError" in tried[0].detail  # the original failure is still named
+
+
+def test_failures_on_one_website_only_do_not_trip_the_network_breaker(tmp_path: Path):
+    """NSE alone failing to connect is NSE's problem (the per-website rule handles it)."""
+    units = jobs.plan_daily(DAY, [jobs.BHAVCOPY, jobs.UDIFF, jobs.SECMASTER], now=NOW).units
+    units += jobs.plan_daily(DAY, [jobs.AMFI_HISTORY], now=NOW).units
+    requests: list[httpx.Request] = []
+    with offline_client(requests, up=("amfiindia",)) as client:
+        out = jobs.run_units(units, client, RawStore(tmp_path))
+    assert [o.status for o in out] == ["failed", "failed", "failed", "fetched"]
+    assert not any("network down" in o.detail for o in out)
+
+
+def test_any_server_answer_resets_the_network_breaker():
+    breaker = jobs.NetworkBreaker(limit=3)
+    breaker.connection_failed("a.test")
+    breaker.connection_failed("b.test")
+    breaker.server_answered()  # e.g. a 404 or a block: the network works
+    breaker.connection_failed("a.test")
+    breaker.connection_failed("b.test")
+    assert not breaker.tripped
+    breaker.connection_failed("c.test")
+    assert breaker.tripped and "a.test, b.test, c.test" in (breaker.reason or "")
+
+
+def test_a_shared_breaker_carries_over_between_passes(tmp_path: Path):
+    breaker = jobs.NetworkBreaker()
+    breaker.reason = "network down: earlier pass"
+    plan = jobs.plan_daily(DAY, [jobs.BHAVCOPY], now=NOW)
+    requests: list[httpx.Request] = []
+    with offline_client(requests) as client:
+        (out,) = jobs.run_units(plan.units, client, RawStore(tmp_path), breaker=breaker)
+    assert requests == [] and out.detail == "not tried: network down: earlier pass"
+
+
+def put(store: RawStore, unit: jobs.Unit) -> None:
+    """Pretend ``unit`` was downloaded earlier."""
+    store.save(
+        source=unit.source, day=unit.day, name=unit.name, content=b"x\n",
+        url="https://example.test/", status_code=200, fetched_at=NOW,
+    )  # fmt: skip
+
+
+def test_stored_files_are_still_reported_as_stored_when_the_network_is_down(tmp_path: Path):
+    store = RawStore(tmp_path)
+    plan = jobs.plan_daily(DAY, [jobs.BHAVCOPY], now=NOW)
+    unit = plan.units[0]
+    put(store, unit)
+    breaker = jobs.NetworkBreaker()
+    breaker.reason = "network down: test"
+    with offline_client([]) as client:
+        (out,) = jobs.run_units(plan.units, client, store, breaker=breaker)
+    assert out.status == "exists"
+
+
+# -- plan_catch_up ---------------------------------------------------------------------
+
+
+def test_catch_up_plans_only_missing_files_of_the_previous_seven_days(tmp_path: Path):
+    store = RawStore(tmp_path)
+    day = date(2026, 11, 18)  # Wed; sessions before it in 7 days: 11, 12, 13, 16, 17 Nov
+    now = datetime(2026, 11, 18, 19, 45, tzinfo=IST)
+    # Everything for 11-16 Nov is already stored; 17 Nov (both runs failed) is not.
+    for session in (date(2026, 11, 11), date(2026, 11, 12), date(2026, 11, 13), date(2026, 11, 16)):
+        for unit in jobs.plan_daily(session, jobs.CATCH_UP_SOURCES, now=now).units:
+            put(store, unit)
+    plan = jobs.plan_catch_up(day, store, now=now)
+    assert {u.day for u in plan.units} == {date(2026, 11, 17)}
+    sources = {u.source for u in plan.units}
+    assert {"nse_bhavcopy_full", "nse_udiff_bhavcopy", "nse_security_master"} <= sources
+    assert {"bse_bhavcopy", "amfi_nav_history", "nse_slb_eligible"} <= sources
+    # snapshot-only files can never be caught up, so they are not planned
+    assert not sources & {"nse_etf_seclist", "amfi_navall", "ibja_rates", "sebi_rss"}
+    assert any("catch-up: " in n and "2026-11-17" in n for n in plan.notes)
+    # the AMFI window for the missed day is the same file the daily run would have saved
+    amfi = next(u for u in plan.units if u.source == "amfi_nav_history")
+    assert amfi.name == "navhistory_20261116_20261117.txt"
+
+
+def test_catch_up_never_plans_the_run_day_itself_or_closed_days(tmp_path: Path):
+    day = date(2026, 11, 16)  # Monday; 7 days back: 9, (10 holiday), 11, 12, 13 Nov
+    plan = jobs.plan_catch_up(day, RawStore(tmp_path), now=datetime(2026, 11, 16, 20, tzinfo=IST))
+    days = {u.day for u in plan.units}
+    assert day not in days
+    assert date(2026, 11, 10) not in days  # NSE holiday
+    assert date(2026, 11, 14) not in days and date(2026, 11, 15) not in days  # weekend
+    assert days == {date(2026, 11, 9), date(2026, 11, 11), date(2026, 11, 12), date(2026, 11, 13)}
+
+
+def test_catch_up_skips_files_known_to_be_unavailable(tmp_path: Path):
+    day = date(2026, 11, 13)
+    now = datetime(2026, 11, 13, 20, tzinfo=IST)
+    store = RawStore(tmp_path / "raw")
+    state = BackfillState.load(tmp_path / "state.json")
+    first = jobs.plan_catch_up(day, store, now=now, state=state)
+    gone = next(u for u in first.units if u.source == "nse_slb_eligible")
+    state.mark_unavailable(gone.source, gone.day, gone.name, status_code=404, url="u")
+    second = jobs.plan_catch_up(day, store, now=now, state=state)
+    assert len(second.units) == len(first.units) - 1
+    assert gone not in second.units
+
+
+def test_catch_up_404_is_remembered_not_a_failure(tmp_path: Path, server: Server):
+    server.status["SLB"] = 404
+    store = RawStore(tmp_path / "raw")
+    state = BackfillState.load(tmp_path / "state.json")
+    now = datetime(2026, 11, 13, 20, tzinfo=IST)
+    plan = jobs.plan_catch_up(date(2026, 11, 13), store, now=now, state=state, sources=[jobs.SLB])
+    assert plan.units
+    with make_client(server) as client:
+        out = jobs.run_units(plan.units, client, store, state=state, state_note="daily catch-up")
+    assert {o.status for o in out} == {"unavailable"}
+    entry = state.get(plan.units[0].source, plan.units[0].day, plan.units[0].name)
+    assert entry is not None and "daily catch-up" in entry.note
+    assert jobs.plan_catch_up(date(2026, 11, 13), store, now=now, state=state).units
+    assert not [
+        u
+        for u in jobs.plan_catch_up(date(2026, 11, 13), store, now=now, state=state).units
+        if u.source.startswith("nse_slb")
+    ]
+
+
 # -- run_units: backfill mode (state) --------------------------------------------------
 
 

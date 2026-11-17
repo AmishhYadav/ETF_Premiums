@@ -20,8 +20,12 @@ Limits you must know
 --------------------
 * Yahoo is an unofficial, undocumented endpoint: it can change or block us (it answered
   HTTP 429 to our first test request on 2026-11-13). Failures are loud, never skipped.
-* Yahoo keeps only about 60 days of 5-minute history (30 days for 1-minute). A day older
-  than that CANNOT be fetched later: every day not recorded is lost for the free method.
+* Yahoo keeps only about 60 days of 5-minute history (30 days for 1-minute), but about
+  730 days of 60-minute bars. `fetch_history` (``etfp collect yahoo-history``) asks for
+  728 days of 60m bars in one request per symbol, which reaches back to late 2024 and
+  covers the R12 beta window; the daily 5m files keep the finer record going. Every
+  Yahoo request from this machine so far (13, 14, 17-18 Nov 2026) got HTTP 429, so none
+  of this has been checked against a live answer (DECISIONS D43).
 * Futures prices are for the *continuous front contract*; a contract roll can show as a
   jump. Index futures are a proxy for the fund's real index (SPEC 6.2, D13).
 
@@ -44,7 +48,7 @@ import pandas as pd
 from etfp import calendars
 from etfp.http import PoliteClient, SourceError
 from etfp.rawstore import RawRecord, RawStore
-from etfp.timeutil import now_ist, require_aware
+from etfp.timeutil import IST, now_ist, require_aware
 
 SOURCE = "yahoo_intraday"
 
@@ -176,6 +180,83 @@ def fetch(
     return store.save_result(source=SOURCE, day=day, name=raw_name(symbol, interval), result=result)
 
 
+# -- history (backfill) mode ----------------------------------------------------------
+#
+# Yahoo serves 60-minute bars for about 730 days back (5-minute bars only ~60 days). One
+# request per symbol therefore covers the whole Sep-Nov 2026 shock and goes back to late
+# 2024: enough for the R12 beta window (250 NAV dates before 2026-09-07). This is NOT
+# confirmed against a live answer yet: every request so far got HTTP 429 (D22, D29, D43).
+
+HISTORY_INTERVAL = "60m"
+HISTORY_DAYS = 728  # Yahoo refuses 60m requests that start more than 730 days back; keep 2 spare
+HISTORY_SYMBOLS: tuple[str, ...] = SYMBOLS  # no Hang Seng future: HK ETFs have no futures term
+
+
+def history_raw_name(symbol: str, interval: str = HISTORY_INTERVAL) -> str:
+    """Raw file name of one history download: 'NQ=F' -> 'NQ_F_60m_history.json'.
+
+    Distinct from the daily 5m names, so the daily job's "already have it" check is not
+    fooled. Saved under the folder of the IST date the download was made.
+    """
+    return f"{safe_symbol(symbol)}_{interval}_history.json"
+
+
+def history_window(now: datetime, *, days: int = HISTORY_DAYS) -> tuple[datetime, datetime]:
+    """UTC start/end of a history request made at ``now``.
+
+    The end is ``now`` rounded DOWN to the whole hour. Futures and FX 60m bars start on the
+    hour, so every bar Yahoo returns has already ended: the hour still in progress (whose
+    "close" would only be the price at download time) is never stored.
+    """
+    now_utc = require_aware(now, "now").astimezone(UTC)
+    end = now_utc.replace(minute=0, second=0, microsecond=0)
+    return end - timedelta(days=days), end
+
+
+def fetch_history(
+    client: PoliteClient,
+    store: RawStore,
+    symbol: str,
+    *,
+    now: datetime | None = None,
+    interval: str = HISTORY_INTERVAL,
+    days: int = HISTORY_DAYS,
+) -> RawRecord:
+    """One large request: ``days`` of ``interval`` bars for ``symbol``, stored untouched.
+
+    Saved as ``yahoo_intraday/<IST date of now>/<history_raw_name>``. The build reads every
+    file in ``yahoo_intraday`` and merges overlapping bars, so history and daily 5m files
+    live side by side. A non-chart body (Yahoo's JSON error with HTTP 200) is not stored.
+    HTTP 429 raises ``SourceBlockedError`` from the client and is never retried there.
+    """
+    _interval_minutes(interval)
+    now = require_aware(now, "now") if now is not None else now_ist()
+    day = now.astimezone(IST).date()
+    start, end = history_window(now, days=days)
+    params = {
+        "interval": interval,
+        "period1": str(int(start.timestamp())),
+        "period2": str(int(end.timestamp())),
+        "includePrePost": "false",
+    }
+    result = client.get(
+        url_for(symbol), source=SOURCE, day=day, headers=YAHOO_HEADERS, params=params
+    )
+    problem = _body_problem(result.content)
+    if problem is not None:
+        raise SourceError(
+            f"{SOURCE} history: {symbol} response is not chart data ({problem}); "
+            f"not stored: {url_for(symbol)}",
+            source=SOURCE,
+            day=day,
+            url=url_for(symbol),
+            status_code=result.status_code,
+        )
+    return store.save_result(
+        source=SOURCE, day=day, name=history_raw_name(symbol, interval), result=result
+    )
+
+
 def _body_problem(content: bytes) -> str | None:
     """Why this body is not a chart result, or None if it looks right."""
     try:
@@ -298,10 +379,13 @@ def value_at(
         return None
     ends = frame["ts"] + pd.to_timedelta(frame["interval_minutes"], unit="m")
     at_utc = pd.Timestamp(at).tz_convert("UTC")
-    ready = frame[ends <= at_utc]
+    ready = frame.assign(_end=ends)[ends <= at_utc]
     if ready.empty:
         return None
-    row = ready.iloc[-1]  # frame is sorted by time
+    # Latest END wins (with 5m and 60m bars mixed, the latest start is not always the
+    # freshest price); on a tie the shorter bar wins (it is the finer measurement).
+    ready = ready.sort_values(["_end", "interval_minutes"], ascending=[True, False], kind="stable")
+    row = ready.iloc[-1]
     bar_start = row["ts"].to_pydatetime()
     bar_end = bar_start + timedelta(minutes=int(row["interval_minutes"]))
     stale = at_utc.to_pydatetime() - bar_end
@@ -314,3 +398,85 @@ def value_at(
         bar_end=bar_end,
         stale=stale,
     )
+
+
+# -- one value per day at a fixed moment (15:30 IST, US close) ------------------------
+
+VALUE_COLUMNS: tuple[str, ...] = (
+    "date",
+    "moment",
+    "symbol",
+    "at_utc",
+    "close",
+    "bar_start_utc",
+    "bar_end_utc",
+    "interval_minutes",
+    "stale_minutes",
+    "source_file",
+)
+"""Columns of :func:`values_at`.
+
+* ``moment``: ``'IN_1530'`` (15:30 IST on the NSE session ``date``) or ``'US_CLOSE'``
+  (16:00 New York, 13:00 on early-close days, on the NYSE session ``date``).
+* ``close``: close of the LAST BAR THAT HAD ENDED by ``at_utc``. For 60m futures/FX bars
+  (which start on the hour) at 15:30 IST = 10:00 UTC that is the bar 09:00-10:00 UTC,
+  whose close is the last trade before 10:00:00 UTC; nothing after 15:30 IST is used.
+* ``stale_minutes``: ``at_utc - bar_end_utc`` in minutes (0 = the bar ended exactly then).
+"""
+
+MOMENT_IN_1530 = "IN_1530"
+MOMENT_US_CLOSE = "US_CLOSE"
+
+
+def values_at(
+    bars: pd.DataFrame,
+    days: list[date],
+    *,
+    moment: str = MOMENT_IN_1530,
+    max_stale: timedelta = timedelta(minutes=30),
+) -> pd.DataFrame:
+    """One row per (day, symbol) that has a bar ended within ``max_stale`` before the moment.
+
+    ``bars`` is one or more `parse` results concatenated (several symbols and bar sizes
+    allowed). A day with no usable bar gives NO row (missing, never carried forward from
+    further back); a day outside the calendar's range is skipped the same way.
+    """
+    if moment not in (MOMENT_IN_1530, MOMENT_US_CLOSE):
+        raise ValueError(f"{SOURCE}: unknown moment {moment!r}")
+    rows: list[dict[str, object]] = []
+    if bars.empty:
+        return pd.DataFrame({c: [] for c in VALUE_COLUMNS})
+    for symbol, grp in bars.groupby("symbol", sort=True):
+        grp = grp.drop_duplicates(["ts", "interval_minutes"], keep="last")
+        for day in days:
+            try:
+                at = indian_close(day) if moment == MOMENT_IN_1530 else us_close(day)
+            except ValueError:
+                continue
+            got = value_at(grp, at, max_stale=max_stale)
+            if got is None:
+                continue
+            match = grp[
+                (grp["ts"] == pd.Timestamp(got.bar_start))
+                & (
+                    grp["interval_minutes"]
+                    == int((got.bar_end - got.bar_start).total_seconds() // 60)
+                )
+            ]
+            rows.append(
+                {
+                    "date": day,
+                    "moment": moment,
+                    "symbol": str(symbol),
+                    "at_utc": pd.Timestamp(at).tz_convert("UTC"),
+                    "close": got.close,
+                    "bar_start_utc": pd.Timestamp(got.bar_start),
+                    "bar_end_utc": pd.Timestamp(got.bar_end),
+                    "interval_minutes": int((got.bar_end - got.bar_start).total_seconds() // 60),
+                    "stale_minutes": got.stale.total_seconds() / 60.0,
+                    "source_file": str(match["source_file"].iloc[-1]) if len(match) else None,
+                }
+            )
+    if not rows:
+        return pd.DataFrame({c: [] for c in VALUE_COLUMNS})
+    return pd.DataFrame(rows, columns=list(VALUE_COLUMNS))

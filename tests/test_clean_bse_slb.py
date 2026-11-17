@@ -11,6 +11,7 @@ import pytest
 
 from etfp.clean import CleanError, bse_prices, make_context, slb
 from etfp.clean.etf_master import build as build_master
+from etfp.config import load_etfs
 from etfp.store import SCHEMAS, Store
 from test_clean_helpers import build_sample, fixture_bytes, make_raw_root, save_raw
 
@@ -125,7 +126,7 @@ def test_unreadable_bse_file_names_table_and_file(tmp_path: Path) -> None:
 
 def test_slb_eligible_has_one_row_per_etf_per_file(sample: Store) -> None:
     df = sample.read_table("slb_eligible")
-    assert len(df) == 2 * 12  # two files x the twelve ETFs in config
+    assert len(df) == 2 * len(load_etfs().etfs)  # two files x every ETF in config
     assert df[["date", "symbol"]].duplicated().sum() == 0
 
 

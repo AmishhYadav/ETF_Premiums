@@ -1,0 +1,45 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
+ 
+Open Ended Schemes(Exchange Traded Funds (ETFs) - Equity ETF)
+ 
+Mirae Asset Mutual Fund
+ 
+145633;INF769K01EG9;-;Mirae Asset Nifty 50 ETF;;;274.0122;13-Nov-2026
+149918;INF769K01IC9;-;Mirae Asset Nifty Midcap 150 ETF;;;23.2179;13-Nov-2026
+UTI Mutual Fund
+ 
+135320;INF789F1AZC0;-;UTI Nifty 50 ETF;Direct Plan;;279.2869;13-Nov-2026
+148173;INF789F1AUV1;-;UTI Nifty Bank ETF;Direct Plan;Growth;63.2038;13-Nov-2026
+ 
+Open Ended Schemes(Other Scheme - Other  ETFs)
+ 
+HDFC Mutual Fund
+ 
+151376;INF179KC1EZ4;-;HDFC BSE 500 ETF;;Growth Option;38.2082;13-Nov-2026
+135853;INF179KC1965;-;HDFC NIFTY 50 ETF;;Growth Option;283.8669;13-Nov-2026
+151375;INF179KC1FB2;-;HDFC NIFTY Smallcap 250 ETF;;Growth Option;180.7353;13-Nov-2026
+ICICI Prudential Mutual Fund
+ 
+141957;INF109KB15Y7;-;BHARAT 22 ETF;Regular Plan;;116.1728;13-Nov-2026
+101705;INF346A01034;-;ICICI Prudential BSE Sensex ETF;;;939.8975;13-Nov-2026
+121366;INF109K012R6;-;ICICI Prudential Nifty 50 ETF;;;285.5291;13-Nov-2026
+144587;INF109KC1NS5;-;ICICI Prudential Nifty Next 50 ETF;;;77.0090;13-Nov-2026
+Kotak Mahindra Mutual Fund
+ 
+112351;INF174K014P6;-;Kotak Nifty 50 ETF;;;279.5937;13-Nov-2026
+Motilal Oswal Mutual Fund
+ 
+114456;INF247L01023;-;Motilal Oswal Nifty Midcap 100 ETF;;;66.8841;13-Nov-2026
+Nippon India Mutual Fund
+ 
+140107;INF457M01133;-;CPSE ETF;Direct Plan;;91.3887;13-Nov-2026
+140084;INF204KB14I2;-;Nippon India ETF Nifty 50 BeES;Direct Plan;;286.9894;13-Nov-2026
+140087;INF204KB15I9;-;Nippon India ETF Nifty Bank BeES;Direct Plan;;632.5725;13-Nov-2026
+148408;INF204KB15V2;-;Nippon India ETF Nifty IT;Direct Plan;;35.5934;13-Nov-2026
+146271;INF204KB1V68;-;Nippon India ETF Nifty Midcap 150;Direct Plan;;234.8627;13-Nov-2026
+140085;INF732E01045;-;Nippon India ETF Nifty Next 50 Junior BeES;Direct Plan;;789.0982;13-Nov-2026
+140089;INF204KB16I7;-;Nippon India ETF Nifty PSU Bank BeES;Direct Plan;;103.3454;13-Nov-2026
+149008;INF204KC1089;-;Nippon India Nifty Pharma ETF;Direct Plan;;29.3403;13-Nov-2026
+SBI Mutual Fund
+ 
+135106;INF200KA1FS1;-;SBI Nifty 50 ETF;Regular Plan;IDCW;271.2118;13-Nov-2026

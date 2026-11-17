@@ -325,3 +325,61 @@ def test_fetch_rejects_naive_now_and_bad_interval(tmp_path: Path):
             yi.fetch(client, store, DAY, "NQ=F", now=datetime(2026, 11, 13, 20, 0))  # noqa: DTZ001
         with pytest.raises(ValueError, match="interval"):
             yi.fetch(client, store, DAY, "NQ=F", interval="5min", now=NOW)
+
+
+# -- history (60m backfill) mode and the value-at-a-moment table (D43) --------------
+
+
+def test_history_request_ends_on_a_whole_hour_and_is_stored_under_the_ist_day(tmp_path: Path):
+    """now = 18 Nov 2026 01:31 IST = 17 Nov 20:01 UTC. End = 20:00 UTC (the hour still in
+    progress is not asked for); start = end - 728 days = 19 Nov 2024 20:00 UTC
+    (17 Nov 2024 -> 17 Nov 2026 is 365 + 365 = 730 days, so 728 back is 19 Nov 2024)."""
+    seen: list[httpx.URL] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url)
+        return httpx.Response(200, content=NQ)
+
+    now = datetime(2026, 11, 18, 1, 31, tzinfo=IST)
+    with make_client(handler) as client:
+        rec = yi.fetch_history(client, RawStore(tmp_path), "NQ=F", now=now)
+    assert rec.relpath == "yahoo_intraday/2026-11-18/NQ_F_60m_history.json"
+    assert rec.path.read_bytes() == NQ
+    params = seen[0].params
+    assert params["interval"] == "60m"
+    assert int(params["period2"]) == int(datetime(2026, 11, 17, 20, 0, tzinfo=UTC).timestamp())
+    assert int(params["period1"]) == int(datetime(2024, 11, 19, 20, 0, tzinfo=UTC).timestamp())
+    assert len(seen) == 1
+
+
+def test_history_429_is_a_block_and_nothing_is_stored(tmp_path: Path):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(429, content=b"Too Many Requests")
+
+    with make_client(handler) as client, pytest.raises(SourceBlockedError):
+        yi.fetch_history(client, RawStore(tmp_path), "NQ=F", now=NOW)
+    assert len(calls) == 1 and not list(tmp_path.rglob("*.json"))
+
+
+def test_values_at_india_close_and_us_close_with_staleness(nq, fx):
+    """Fixture bars (README): NQ 5m bar 09:55-10:00 UTC on 13 Nov closes 21000.50 -> the value
+    at 15:30 IST 13 Nov, stale 0 min; the bar 20:55-21:00 UTC on 12 Nov closes 21100.00 -> the
+    US close of 12 Nov. USD/INR at 15:30 IST: 83.4550."""
+    bars = pd.concat([nq, fx], ignore_index=True)
+    ind = yi.values_at(bars, [date(2026, 11, 13)], moment="IN_1530").set_index("symbol")
+    assert ind.loc["NQ=F", "close"] == 21000.50 and ind.loc["NQ=F", "stale_minutes"] == 0.0
+    assert ind.loc["NQ=F", "bar_start_utc"] == pd.Timestamp("2026-11-13 09:55", tz="UTC")
+    assert ind.loc["USDINR=X", "close"] == 83.4550
+    assert ind.loc["NQ=F", "source_file"].endswith("NQ_F_5m.json")
+    us = yi.values_at(bars, [date(2026, 11, 12)], moment="US_CLOSE").set_index("symbol")
+    assert us.loc["NQ=F", "close"] == 21100.00
+    # a day the bars do not cover gives no row (never a value from further back)
+    assert yi.values_at(bars, [date(2026, 11, 2)]).empty
+    # a stale bar: at 15:30 IST on 13 Nov with only bars up to 09:00 UTC -> 60 min stale -> none
+    early = nq[nq["ts"] < pd.Timestamp("2026-11-13 09:00", tz="UTC")]
+    assert yi.values_at(early, [date(2026, 11, 13)]).empty
+    got = yi.values_at(early, [date(2026, 11, 13)], max_stale=timedelta(minutes=65))
+    assert got.iloc[0]["stale_minutes"] == pytest.approx(60.0)

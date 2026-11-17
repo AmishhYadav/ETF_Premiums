@@ -81,6 +81,15 @@ def test_prem_raw_on_9_nov_is_the_press_number(plain) -> None:
     assert round(row["prem_raw"] * 100, 1) == 100.8
 
 
+def test_usdinr_ref_is_fbil_rate_of_the_same_day(plain) -> None:
+    """FBIL fixture: 9 Nov 2026 'INR / 1 USD' 93.8579 (published 13:00 IST, before the close).
+    Same value for every ETF on that day; a day FBIL has not published (yet) stays NaN."""
+    _, _, df = plain
+    assert _row(df, "MONQ50", D9)["usdinr_ref"] == pytest.approx(93.8579)
+    assert _row(df, "NIFTYBEES", D9)["usdinr_ref"] == pytest.approx(93.8579)
+    assert df[df["date"] == date(2021, 1, 4)]["usdinr_ref"].isna().all()
+
+
 def test_stale_nav_is_flagged_and_its_value_blanked(plain) -> None:
     # The fixture has no AMFI NAV dated 6 Nov, so the freshest knowable NAV is from 10 Sep.
     # 60 days old is a hole in the NAV history, not a lag: the date and lag stay visible

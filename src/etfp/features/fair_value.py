@@ -46,9 +46,12 @@ Every input used is echoed back in ``fv_in_*`` columns so a number can be traced
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+
 import numpy as np
 import pandas as pd
 
+from etfp import calendars
 from etfp.config import Etf
 
 FV_METHODS = ("bloomberg", "free_futures", "nav_only", "no_nav")
@@ -65,6 +68,87 @@ OUTPUT_COLUMNS = (
     "fv_in_fx_t",
     "fv_in_fx_a",
 )
+
+
+# -- futures contract rolls (free continuous series) ---------------------------------
+#
+# Plain words. "NQ=F" is not one contract: it is whatever contract is "front" today. Each
+# quarter (Mar, Jun, Sep, Dec) it switches from the expiring contract to the next one,
+# which trades HIGHER by the cost of carry (about 1% a quarter at 2026 rates, the
+# "calendar spread"). If F_a was read from the old contract and F_t from the new one, the
+# ratio F_t / F_a contains that ~1% jump although the market did not move, and FV would be
+# about 1% too high. We cannot see which contract a Yahoo bar belongs to, so on the few days
+# where a switch can fall between the two readings we do not adjust at all (nav_only).
+#
+# When can the switch fall between the readings? F_a is read at the US close (16:00 New
+# York) and F_t at 15:30 IST (05:00 or 06:00 New York) the next morning, so only a switch
+# during the US night matters, i.e. at a CME session open (18:00 New York). The two
+# candidate session opens per quarter are the one that starts the CME "roll date" (the
+# Thursday 8 days before expiry, when volume moves) and the one that starts the expiry day
+# (third Friday). Which one Yahoo uses is VERIFY (D43); both are guarded, which costs
+# two rows per ETF per quarter. For the beta (close-to-close returns) a switch during the
+# US day also matters, so the expiry-day open (09:30 New York) is added there.
+
+_NEW_YORK = "America/New_York"
+_QUARTER_MONTHS = (3, 6, 9, 12)
+
+
+def cme_quarterly_expiry(year: int, month: int) -> date:
+    """Expiry day of the Mar/Jun/Sep/Dec equity index future (final settlement at the 09:30
+    New York open): the third Friday, or the US session before it when that Friday is an
+    exchange holiday (19 Jun 2026, Juneteenth -> Thu 18 Jun 2026)."""
+    if month not in _QUARTER_MONTHS:
+        raise ValueError(f"equity index futures expire in Mar/Jun/Sep/Dec, not month {month}")
+    first = date(year, month, 1)
+    third_friday = first + timedelta(days=(4 - first.weekday()) % 7 + 14)
+    try:
+        return calendars.last_session_on_or_before("US", third_friday)
+    except ValueError:  # outside the calendar's range: keep the plain rule
+        return third_friday
+
+
+def _third_friday(year: int, month: int) -> date:
+    first = date(year, month, 1)
+    return first + timedelta(days=(4 - first.weekday()) % 7 + 14)
+
+
+def futures_roll_moments(
+    start: datetime, end: datetime, *, include_expiry_open: bool = False
+) -> list[datetime]:
+    """Candidate front-contract switch moments (tz-aware UTC) with ``start < m <= end``.
+
+    Per quarter, with R = third Friday minus 8 days (the CME roll date, a Thursday) and E =
+    the expiry day (:func:`cme_quarterly_expiry`): 18:00 New York on R-1 (opens R's session)
+    and 18:00 New York on E-1 (opens E's session); with ``include_expiry_open`` also 09:30
+    New York on E.
+    """
+    if start.tzinfo is None or end.tzinfo is None:
+        raise ValueError("start and end must be timezone-aware")
+    out: list[datetime] = []
+    s = pd.Timestamp(start).tz_convert("UTC")
+    e = pd.Timestamp(end).tz_convert("UTC")
+    for year in range(s.year - 1, e.year + 2):
+        for month in _QUARTER_MONTHS:
+            exp = cme_quarterly_expiry(year, month)
+            local = [
+                (_third_friday(year, month) - timedelta(days=9), 18, 0),
+                (exp - timedelta(days=1), 18, 0),
+            ]
+            if include_expiry_open:
+                local.append((exp, 9, 30))
+            for d, hh, mm in local:
+                m = pd.Timestamp(d.year, d.month, d.day, hh, mm, tz=_NEW_YORK)
+                m = m.tz_convert("UTC")
+                if s < m <= e:
+                    out.append(m.to_pydatetime())
+    return sorted(out)
+
+
+def crosses_futures_roll(
+    start: datetime, end: datetime, *, include_expiry_open: bool = False
+) -> bool:
+    """True if a candidate contract switch lies in ``(start, end]`` (see above)."""
+    return bool(futures_roll_moments(start, end, include_expiry_open=include_expiry_open))
 
 
 def fv_terms_for(etf: Etf) -> tuple[bool, bool]:

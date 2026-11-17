@@ -183,6 +183,8 @@ def test_daily_plist_schedule_and_command(phase: str, hour: int, minute: int) ->
     assert plist["StandardErrorPath"] == str(ROOT / "logs" / f"launchd.daily-{phase}.err.log")
     assert plist["EnvironmentVariables"]["ETFP_ROOT"] == str(ROOT)
     assert plist["RunAtLoad"] is False
+    # Not "Background": macOS throttles those ~5x, which made the build take 29 minutes.
+    assert plist["ProcessType"] == "Standard"
 
 
 def test_render_plist_picks_each_job_and_rejects_unknown() -> None:

@@ -27,6 +27,7 @@ import gzip
 import io
 import re
 import zlib
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -184,27 +185,27 @@ def parse(content: bytes, *, file_date: date, source_file: str) -> pd.DataFrame:
 
     reader = csv.reader(io.StringIO(text, newline=""))
     header: list[str] | None = None
-    index: dict[str, int] = {}
     out: dict[str, list] = {name: [] for name in OUTPUT_COLUMNS}
+    add_row: Callable[[list[str], int], None] | None = None
     try:
         for fields in reader:
             line = reader.line_num
             if not any(f.strip() for f in fields):
                 continue  # blank line: not a data row
-            fields = [f.strip() for f in fields]
             if header is None:
-                header = fields
+                header = [f.strip() for f in fields]
                 missing = [c for c in _REQUIRED if c not in header]
                 if missing:
                     raise ValueError(
                         f"{SOURCE}: header is missing column(s) {missing}; got {header[:12]}... "
                         "Has NSE changed the file format?"
                     )
-                index = {name: header.index(name) for name in _REQUIRED}
+                add_row = _row_adder(out, header, file_date, source_file)
                 continue
             if len(fields) != len(header):
                 raise _fail(line, f"expected {len(header)} fields but found {len(fields)}")
-            _append_row(out, fields, index, line, file_date, source_file)
+            assert add_row is not None
+            add_row(fields, line)
     except csv.Error as exc:
         raise ValueError(f"{SOURCE}: line {reader.line_num}: unreadable CSV ({exc})") from exc
 
@@ -215,35 +216,50 @@ def parse(content: bytes, *, file_date: date, source_file: str) -> pd.DataFrame:
     return _frame(out)
 
 
-def _append_row(
-    out: dict[str, list],
-    fields: list[str],
-    index: dict[str, int],
-    line: int,
-    file_date: date,
-    source_file: str,
-) -> None:
-    def get(name: str) -> str:
-        return fields[index[name]]
+def _row_adder(
+    out: dict[str, list], header: list[str], file_date: date, source_file: str
+) -> Callable[[list[str], int], None]:
+    """A function that checks one data row and appends its values to ``out``.
 
-    if not get("TckrSymb") or not get("SctySrs"):
-        raise _fail(line, "TckrSymb or SctySrs is empty")
-    band = _band(get("PricRg"))
-    out["file_date"].append(file_date)
-    out["symbol"].append(get("TckrSymb"))
-    out["series"].append(get("SctySrs"))
-    out["name"].append(get("FinInstrmNm") or None)
-    out["isin"].append(get("ISIN") or None)
-    out["issued_units"].append(_units(get("IssdCptl"), line))
-    out["par_value_raw"].append(_whole(get("ParVal"), line, "ParVal"))
-    out["band_low"].append(band[0] if band else float("nan"))
-    out["band_high"].append(band[1] if band else float("nan"))
-    out["price_range_raw"].append(get("PricRg") or None)
-    out["call_auction_ind"].append(get("CallAuctnInd") or None)
-    out["listing_date_raw"].append(_whole(get("ListgDt"), line, "ListgDt"))
-    out["delete_flag"].append(get("DelFlg") or None)
-    out["slb_eligible_raw"].append(get("SLBMElgblty") or None)
-    out["source_file"].append(source_file)
+    Speed matters here: there are 25,000-40,000 rows per file and about 700 files, and each
+    row has ~120 fields of which we use 11. So the column positions are looked up once,
+    only the 11 fields we use are stripped of spaces, and the lists are bound to local
+    names. The checks and the values are exactly those of a plain row-by-row read.
+    """
+    (
+        i_sym, i_ser, i_name, i_isin, i_par, i_units, i_range, i_call, i_listed, i_del, i_slb,
+    ) = (header.index(name) for name in _REQUIRED)  # fmt: skip
+    add_date, add_sym, add_ser = (out[c].append for c in ("file_date", "symbol", "series"))
+    add_name, add_isin, add_units = (out[c].append for c in ("name", "isin", "issued_units"))
+    add_par, add_low, add_high = (out[c].append for c in ("par_value_raw", "band_low", "band_high"))
+    add_range, add_call = out["price_range_raw"].append, out["call_auction_ind"].append
+    add_listed, add_del = out["listing_date_raw"].append, out["delete_flag"].append
+    add_slb, add_file = out["slb_eligible_raw"].append, out["source_file"].append
+    nan = float("nan")
+
+    def add(fields: list[str], line: int) -> None:
+        symbol, series = fields[i_sym].strip(), fields[i_ser].strip()
+        if not symbol or not series:
+            raise _fail(line, "TckrSymb or SctySrs is empty")
+        price_range = fields[i_range].strip()
+        band = _band(price_range)
+        add_date(file_date)
+        add_sym(symbol)
+        add_ser(series)
+        add_name(fields[i_name].strip() or None)
+        add_isin(fields[i_isin].strip() or None)
+        add_units(_units(fields[i_units].strip(), line))
+        add_par(_whole(fields[i_par].strip(), line, "ParVal"))
+        add_low(band[0] if band else nan)
+        add_high(band[1] if band else nan)
+        add_range(price_range or None)
+        add_call(fields[i_call].strip() or None)
+        add_listed(_whole(fields[i_listed].strip(), line, "ListgDt"))
+        add_del(fields[i_del].strip() or None)
+        add_slb(fields[i_slb].strip() or None)
+        add_file(source_file)
+
+    return add
 
 
 _INT_OUTPUT = {"issued_units", "par_value_raw", "listing_date_raw"}

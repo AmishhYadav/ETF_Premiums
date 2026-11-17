@@ -83,9 +83,17 @@ def _render_plist(
     etfp_args: list[str],
     intervals: list[dict[str, int]],
     log_stem: str,
+    process_type: str = "Background",
 ) -> str:
     """Shared plist text. ``caffeinate -i`` stops the Mac from going to sleep because it
-    looks idle while the job runs."""
+    looks idle while the job runs.
+
+    ``process_type`` tells macOS how much CPU and disk the job may use. "Background" jobs
+    are throttled hard (low priority, slow cores, slow disk): measured on the project Mac,
+    plain Python ran about 5x slower under that policy (`taskpolicy -b`), which is why a
+    ~5 minute build took 29 minutes from launchd on 2026-11-17. The daily jobs therefore use
+    "Standard" (normal priority, like a command typed in Terminal).
+    """
     root = Path(project_root)
     uv = Path(uv_path)
     path_dirs = list(BASE_PATH)
@@ -109,7 +117,7 @@ def _render_plist(
         "StandardErrorPath": str(root / "logs" / f"launchd.{log_stem}.err.log"),
         "EnvironmentVariables": {"ETFP_ROOT": str(root), "PATH": ":".join(path_dirs)},
         "RunAtLoad": False,
-        "ProcessType": "Background",
+        "ProcessType": process_type,
     }
     return plistlib.dumps(plist, sort_keys=False).decode("utf-8")
 
@@ -151,6 +159,7 @@ def render_daily_plist(
         etfp_args=["run", "daily", "--phase", phase],
         intervals=[{"Weekday": d, "Hour": hour, "Minute": minute} for d in WEEKDAYS],
         log_stem=f"daily-{phase}",
+        process_type="Standard",  # the build is CPU-heavy; see _render_plist
     )
 
 
@@ -175,6 +184,10 @@ STALE_LOCK = timedelta(hours=2)
 RECORD_VERSION = 1
 
 StepStatus = Literal["ok", "warning", "failed", "skipped"]
+
+# Key in the collect step's ``data`` meaning "the machine had no network, nothing new was
+# downloaded". The run then skips build, export and alerts (see ``run_daily``).
+OFFLINE = "offline"
 
 
 def default_phase(now: datetime) -> Phase:
@@ -387,6 +400,11 @@ def run_daily(
         that are plain logic: the export is skipped when the build failed (there is nothing
         new to export), nothing else is skipped. Alerts still run after a failure so the
         "stale data" and "source failed" alerts can fire.
+      * Offline: when the collect step reports ``data[OFFLINE]`` (no network at all, so
+        nothing new was downloaded), build, export and alerts are SKIPPED with that reason.
+        Rebuilding unchanged raw files changes nothing, and alerts could not be delivered
+        without a network anyway. The record still shows every step, so `etfp status`
+        says why.
       * The exit code is 1 if any step failed, else 0. A ``warning`` (for example "no
         Telegram credentials") does not fail the run.
       * The record ``<state>/runs/<day>_<phase>.json`` is rewritten after every step, so a
@@ -445,16 +463,22 @@ def run_daily(
             return finish(name, StepReport("skipped", why), now, now)
 
         try:
-            do("collect", lambda: steps.collect(day, phase))
-            built = do("build", steps.build)
-            if built.status == "failed":
-                skip("export", "the build failed, so there is nothing new to export")
+            collected = do("collect", lambda: steps.collect(day, phase))
+            if collected.data.get(OFFLINE):
+                why = "offline (no network): nothing new was downloaded"
+                skip("build", f"{why}; the tables from the last build are unchanged")
+                skip("export", f"{why}; the last research export is still current")
+                skip("alerts", f"{why}; Telegram cannot be reached either")
             else:
-                do("export", steps.export)
-            if no_alerts:
-                skip("alerts", "--no-alerts")
-            else:
-                do("alerts", steps.alerts)
+                built = do("build", steps.build)
+                if built.status == "failed":
+                    skip("export", "the build failed, so there is nothing new to export")
+                else:
+                    do("export", steps.export)
+                if no_alerts:
+                    skip("alerts", "--no-alerts")
+                else:
+                    do("alerts", steps.alerts)
         except BaseException:  # Ctrl-C or a bug in this function: leave an honest record
             record["outcome"] = "interrupted"
             record["finished_at"] = clock().astimezone(IST).isoformat(timespec="seconds")

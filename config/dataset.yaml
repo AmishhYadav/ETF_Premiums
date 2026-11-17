@@ -163,6 +163,7 @@ tables:
       units_outstanding: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
       units: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
       bse_close: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
+      usdinr_ref: "source value (D41): FBIL reference rate, redistribution terms not checked; rebuild locally"
       bse_volume: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
       bse_value: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"
       bse_trades: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"

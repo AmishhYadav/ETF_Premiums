@@ -30,6 +30,7 @@ from etfp.clean.common import (
     apply_corporate_actions,
     list_raw_files,
     log_gaps,
+    map_former_symbols,
     parse_file,
     skipped_raw_files,
 )
@@ -49,7 +50,8 @@ COLUMNS = [
 
 def build(ctx: CleanContext) -> pd.DataFrame:
     """Build the prices_daily table from every bhavcopy and UDiFF file in the raw store."""
-    symbols = ctx.etf_symbols()
+    # Former NSE symbols are read too and relabelled to the current one (symbol changes).
+    symbols = ctx.etf_symbols() | ctx.former_symbols()
     full = _read(ctx, nse_bhavcopy.SOURCE, symbols, _parse_full)
     udiff = _read(ctx, nse_udiff.SOURCE, symbols, _parse_udiff)
 
@@ -85,7 +87,12 @@ def _read(ctx: CleanContext, source: str, symbols: set[str], parser) -> pd.DataF
             continue
         frame = parse_file(TABLE, rf, lambda b, rf=rf: parser(rf, b))
         _check_file_date(rf, frame)
-        frames.append(frame[frame["symbol"].isin(symbols)])
+        frame = frame[frame["symbol"].isin(symbols)]
+        frames.append(
+            map_former_symbols(
+                frame, ctx.universe, date_col="date", table=TABLE, source_file=rf.relpath
+            )
+        )
     if not frames:
         logger.info("%s: no raw files for %s", TABLE, source)
         return _empty(source)

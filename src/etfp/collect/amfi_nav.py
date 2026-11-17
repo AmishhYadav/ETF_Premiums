@@ -197,6 +197,10 @@ def _parse(content: bytes, *, source: str, source_file: str) -> pd.DataFrame:
     amc: str | None = None
     category: str | None = None
     nav_missing = 0
+    # A history file repeats the same few dates on every one of its ~100,000 rows, so each
+    # date text is converted once and reused. A bad date is never stored here, so it still
+    # fails on the first line that has it.
+    known_dates: dict[str, date] = {}
     for n, text in enumerate(lines[header_at + 1 :], start=header_at + 2):
         if not text.strip():
             continue
@@ -217,7 +221,11 @@ def _parse(content: bytes, *, source: str, source_file: str) -> pd.DataFrame:
             out["plan"].append(fields[at["plan"]] or None)
             out["option"].append(fields[at["option"]] or None)
             out["nav"].append(float("nan") if nav is None else nav)
-            out["nav_date"].append(_date_value(fields[at["nav_date"]], source, n))
+            date_text = fields[at["nav_date"]]
+            nav_date = known_dates.get(date_text)
+            if nav_date is None:
+                nav_date = known_dates[date_text] = _date_value(date_text, source, n)
+            out["nav_date"].append(nav_date)
             out["amc"].append(amc)
             out["category"].append(category)
             out["source_file"].append(source_file)

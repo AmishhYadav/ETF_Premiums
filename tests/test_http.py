@@ -15,6 +15,7 @@ from etfp.http import (
     SourceError,
     SourceNotFoundError,
     SourceUnavailableError,
+    is_connection_failure,
 )
 from etfp.timeutil import IST
 
@@ -220,6 +221,20 @@ def test_timeout_is_retried() -> None:
     with make_client(clock, rec) as client:
         assert client.get("https://x.test/", source="s", day=DAY).status_code == 200
     assert len(rec.requests) == 2
+
+
+def test_is_connection_failure_finds_the_cause_of_a_wrapped_error() -> None:
+    """A laptop with no network gives ConnectError; PoliteClient wraps it after retries."""
+    clock = FakeClock()
+    rec = Recorder(clock, [httpx.ConnectError("no network")] * 2)
+    with make_client(clock, rec, max_retries=1) as client, pytest.raises(SourceError) as info:
+        client.get("https://x.test/", source="s", day=DAY)
+    assert is_connection_failure(info.value)
+    assert is_connection_failure(httpx.ConnectTimeout("slow to connect"))
+    # The server was reached in these cases, so the network itself works:
+    assert not is_connection_failure(httpx.ReadTimeout("slow answer"))
+    assert not is_connection_failure(SourceError("HTTP 500", source="s", day=DAY, url="u"))
+    assert not is_connection_failure(KeyError("parse error"))
 
 
 def test_retries_also_respect_the_rate_limit() -> None:

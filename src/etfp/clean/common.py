@@ -118,6 +118,66 @@ def concat_frames(frames: list[pd.DataFrame], columns: Iterable[str]) -> pd.Data
     return pd.concat(frames, ignore_index=True)[columns]
 
 
+def map_former_symbols(
+    frame: pd.DataFrame,
+    universe: EtfUniverse,
+    *,
+    date_col: str,
+    table: str,
+    source_file: str,
+) -> pd.DataFrame:
+    """Relabel rows traded under a fund's earlier NSE symbol to its current symbol.
+
+    Plain words: NSE sometimes renames a fund's ticker (SBI's Nifty 50 ETF traded as
+    SETFNIF50 until 29 Oct 2026 and as SBINIFTY50 from 30 Oct). Each NSE file uses the
+    ticker of its own day, so one fund looks like two. ``config/etfs.yaml``
+    ``former_symbols`` lists the old tickers with the last day each was used; rows of
+    an old ticker dated on or before that day get the current ticker. Rows of the old
+    ticker dated later are left alone (NSE could reuse a ticker for another fund).
+
+    Safety checks (both stop the build, naming the file):
+    * where the file has an ISIN, a relabelled row must carry the fund's configured ISIN;
+    * relabelling must not create two rows for one fund on one day.
+    """
+    mapping = universe.former_symbols()
+    if frame.empty or not mapping:
+        return frame
+    sym = frame["symbol"].astype("string")
+    old = sym.isin(list(mapping))
+    if not old.any():
+        return frame
+    new_sym = sym[old].map(lambda s: mapping[s][0])
+    until = sym[old].map(lambda s: mapping[s][1])
+    in_window = pd.Series(
+        [d <= u for d, u in zip(frame.loc[old, date_col], until, strict=True)], index=until.index
+    )
+    hit = in_window[in_window].index
+    if len(hit) == 0:
+        return frame
+    out = frame.copy()
+    if "isin" in out.columns:
+        isin_of = {e.symbol: e.isin for e in universe.etfs}
+        for idx in hit:
+            got = out.at[idx, "isin"]
+            want = isin_of[new_sym[idx]]
+            if got is not None and not pd.isna(got) and str(got) != want:
+                raise CleanError(
+                    f"{table}: {source_file}: {out.at[idx, 'symbol']} has ISIN {got}, but "
+                    f"config/etfs.yaml says its successor {new_sym[idx]} is {want}; "
+                    "check former_symbols"
+                )
+    out.loc[hit, "symbol"] = new_sym[hit].to_numpy()
+    key = ["symbol", date_col] + (["series"] if "series" in out.columns else [])
+    dup = out.duplicated(key, keep=False) & out.index.isin(hit)
+    if dup.any():
+        first = out[dup].iloc[0]
+        raise CleanError(
+            f"{table}: {source_file}: {first['symbol']} appears under both its old and new "
+            f"NSE symbol on {first[date_col]}; check former_symbols in config/etfs.yaml"
+        )
+    return out
+
+
 def apply_corporate_actions(frame: pd.DataFrame, *, table: str) -> pd.DataFrame:
     """HOOK for split/bonus adjustment of prices and NAVs. Today it changes nothing.
 
@@ -199,6 +259,10 @@ class CleanContext:
         if self.master is not None:
             symbols |= set(self.master["symbol"].dropna().astype(str))
         return symbols
+
+    def former_symbols(self) -> set[str]:
+        """Earlier NSE symbols of configured ETFs (config ``former_symbols``)."""
+        return set(self.universe.former_symbols())
 
 
 def skipped_raw_files(config_path: Path | None = None) -> dict[str, str]:

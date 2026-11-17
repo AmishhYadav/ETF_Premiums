@@ -31,3 +31,37 @@ actions:
       scheme 114984 history shows 1010.9493 (15 Jun), 1005.5588 (16 Jun), 1001.7978
       (17 Jun), 1025.4998 (18 Jun) on the OLD scale and 101.5224 on 21 Jun 2021 on the NEW
       scale, so the NAV changed scale four days after the price. DECISIONS D9.
+
+  # R20 domestic controls (DECISIONS D42). Checked 2026-11-18 against raw data only (no
+  # AMC or NSE notice read). All three: the price drops ~10x on the ex-date while that day's
+  # PREV_CLOSE stays unadjusted, and the AMFI NAV changes scale a few days later.
+  - symbol: HDFCNIFTY
+    type: split
+    ratio: 10
+    ex_date: 2021-02-17
+    nav_ex_date: 2021-02-22
+    verified: true
+    source: >-
+      Traded as HDFCNIFETF then. Price: NSE full bhavcopy 2021-02-16 close 1628.18, 2021-02-17
+      close 162.44 (PREV_CLOSE 1628.18). NAV: AMFI scheme 135853 history 1609.09 (17 Feb),
+      1599.60 (18 Feb), 1585.10 (19 Feb) on the old scale, 155.38 on 22 Feb 2021 on the new.
+  - symbol: BANKBETA
+    type: split
+    ratio: 10
+    ex_date: 2021-02-17
+    nav_ex_date: 2021-02-22
+    verified: true
+    source: >-
+      Traded as UTIBANKETF then. Price: NSE full bhavcopy 2021-02-16 close 372.44, 2021-02-17
+      close 39.47 (PREV_CLOSE 372.44). NAV: AMFI scheme 148173 history 368.8947 (17 Feb),
+      365.6578 (18 Feb), 358.2085 (19 Feb) on the old scale, 35.2370 on 22 Feb 2021 on the new.
+  - symbol: NIFTYBETA
+    type: split
+    ratio: 10
+    ex_date: 2023-09-25
+    nav_ex_date: 2023-09-26
+    verified: true
+    source: >-
+      Traded as UTINIFTETF then. Price: NSE full bhavcopy 2023-09-22 close 2113.67, 2023-09-25
+      close 211.23 (PREV_CLOSE 2113.67). NAV: AMFI scheme 135320 history 2111.5501 (25 Sep) on
+      the old scale, 211.0492 on 26 Sep 2023 on the new.
