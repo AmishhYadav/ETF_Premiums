@@ -132,6 +132,12 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 - Status: done with two findings (298d62a, 2026-11-14): (a) and (c) reproduce exactly; (b) aggregates and MONQ50 prem_raw 100.8% reproduce; prem_known 107.1% only reproduces once AMFI has the NAV dated 6 Nov (fixtures lack it; strict xfail). **For the research side:** the pipeline counts 9 Nov 2026 as session 44, not 43, because Sun 8 Nov 2026 was a Diwali Muhurat session that NSE treats as a session (its close is the 9 Nov PREV_CLOSE and band base; DECISIONS D24). 4 Nov is still session 40, so the P2 window is unaffected. Please confirm which count the paper should use
 - Notes: The trading calendar must treat 2026-09-14 as an NSE holiday (18 Sep is session 9 after the change, 4 Nov session 40, 9 Nov session 43); the paper's P2 window (sessions 16-40) depends on it. If the pipeline's numbers differ from these, tell the research side before changing either.
 
+### R20 — More domestic control ETFs
+- Asked: 2026-11-15 (from draft 3)
+- Need: Add 15-20 liquid domestic equity ETFs (same band rule from 7 Sep 2026, open creation) to `etf_day` with the same columns as the existing four. Needed for Conley-Taber intervals in P1; four controls are too few. See `paper/draft3/README.md` and the project doc `research/DRAFT3.md`.
+- Status: done (cddf7cf, 2026-11-18): 18 added (22 controls, 9 fund houses, 12 indices), `group_label == "control"`, list and selection rule in DECISIONS D42. Schema 1.6.0. **For the research side:** (1) select controls with `group_label == "control"`; `paper/draft3/analysis/common.py` hard-codes the old four. (2) NSE ticker renames are now followed, so NIFTYIETF (before 2023-12-20), MON100 (before 2021-06-16) and SILVERBEES (before 2022-05-10) have more rows than before. Re-run anything that uses these funds before those dates. (3) New `usdinr_ref` column (FBIL USD/INR, same day) and `fx_ref_daily.parquet` for the rupee covariate (D43). Free futures are still blocked (Yahoo HTTP 429), so `fv_method` is still `nav_only`.
+- Notes: creation_unit_size for the new controls is still VERIFY (SIDs not read). HDFCBSE500 and HDFCSML250 were thin in 2023.
+
 ## Done
 
 _None yet._
