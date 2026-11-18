@@ -58,6 +58,8 @@ One row per feeder fund (fund of funds) per month end. Feeders in R4: Motilal Os
 
 Checks: one row per (scheme code, month end); one scheme code never holds two different ETFs.
 
+**Automatic rows (D46).** You no longer have to type the monthly holdings. `uv run etfp collect amc-portfolio` saves the fund houses' own monthly portfolio Excel files (Motilal Oswal, Mirae Asset, Nippon India), and at build time every month without a typed row is filled from them: `etf_units_held` = the quantity of the ETF in the feeder's portfolio, `aum` = the feeder's total net assets in rupees, `source_file` = `<raw file>#<sheet>`; `fof_net_flow`, `subscription_status` and `notice_date` stay blank. The Regular and Direct plans share one portfolio, so the automatic row is written once, on the Regular plan's scheme code (a typed Direct-plan row with units would be counted twice by `feeder_units_daily`). A typed row always wins; if it differs from the AMC file by more than 1% the build logs a warning naming both. Numbers are as published (not split-adjusted).
+
 `etfp.clean.manual_fof.feeder_units_daily(fof_monthly, dates, lag_days=0)` gives, per ETF and date, the sum over feeders of the latest disclosed `etf_units_held` (carried forward; a blank month is skipped so the previous figure continues). Columns: `symbol`, `date`, `feeder_units` (NaN, not 0, until some feeder has reported), `feeders_counted`, `oldest_month_end` (how stale the sum is). Monthly portfolios are published some days after month end; with `lag_days=0` a month-end figure counts from the month-end date itself, which uses information the market did not yet have. Use `lag_days=10` for a series without look-ahead.
 
 ## `data/manual/units_monthly.csv` -> table `units_monthly` (R11)
@@ -74,6 +76,8 @@ Month-end units outstanding before NSE's daily file exists. `units = aum / nav` 
 | `source` | yes | where the figures came from, e.g. `amfi 2022-01`, `factsheet` |
 
 Give `units`, or both `aum` and `nav`. If all three are given they must agree within 1% (a common mistake is AUM in crores).
+
+**Automatic rows (D46).** Months without a typed row are filled from the ETF's own monthly portfolio file: `aum` = total net assets (GRAND TOTAL line, rupees), `nav` = the last AMFI NAV on or before the month end (`nav_daily`; at most 5 days earlier, else no row), `units` = `aum / nav`, `source` = `amc_portfolio_<amc> AUM / AMFI NAV of <date>`, `source_file` = `<raw file>#<sheet>`. A typed row wins; a difference above 1% is logged. Check against NSE's own units: `uv run etfp amc-portfolio crosscheck`.
 
 ## `data/raw/trends/<pull date>/*.csv` -> table `trends_daily` (R15)
 

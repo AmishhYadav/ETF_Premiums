@@ -955,5 +955,158 @@ def export_dashboard_cmd(
     typer.echo(f"dashboard snapshot: {folder}")
 
 
+@collect_app.command("amc-portfolio")
+def collect_amc_portfolio(
+    amc: Annotated[
+        str, typer.Option("--amc", help="motilal, mirae, nippon or all (default all)")
+    ] = "all",
+    start: Annotated[
+        str, typer.Option("--from", help="First portfolio month, YYYY-MM-DD (default 2020-12-01)")
+    ] = "2020-12-01",
+    end: Annotated[
+        str | None, typer.Option("--to", help="Last month YYYY-MM-DD (default today)")
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="List the files that would be downloaded; save only the listings"
+        ),
+    ] = False,
+) -> None:
+    """Save the AMCs' monthly portfolio Excel files untouched (feeder-fund units, ETF AUM).
+
+    Sources: Motilal Oswal, Mirae Asset and Nippon India MF download pages (public, no login).
+    Files already in the raw store (same URL) are not fetched again, so a daily or monthly run
+    only downloads what is new. At least 2 s between requests; a block (403/429) stops the run.
+    """
+    from etfp.collect import amc_portfolio as ap
+    from etfp.http import SourceBlockedError
+
+    _configure_logging()
+    names = list(ap.AMCS) if amc == "all" else [amc]
+    for name in names:
+        if name not in ap.AMCS:
+            typer.echo(f"error: --amc must be one of {', '.join(ap.AMCS)} or all", err=True)
+            raise typer.Exit(EXIT_USAGE)
+    first = _parse_day(start, "--from")
+    last = _parse_day(end, "--to") if end else today_ist()
+    store = RawStore(paths.raw_dir())
+    failed = 0
+    with PoliteClient(min_interval_s=ap.POLITE_INTERVALS, timeout_s=_BULK_TIMEOUT_S) as client:
+        for name in names:
+            source = ap.SOURCES[name]
+            try:
+                if dry_run:
+                    refs = ap.list_refs(name, client, store, today_ist(), first, last)
+                    for ref in refs:
+                        typer.echo(f"WOULD FETCH {source} {ref.name}  {ref.url}")
+                    typer.echo(f"{source}: {len(refs)} file(s) listed")
+                    continue
+
+                def show(o: ap.FetchOutcome, source: str = source) -> None:
+                    if o.status == "failed":
+                        typer.echo(f"FAILED  {source} {o.ref.url}: {o.detail}", err=True)
+                    elif o.status == "fetched":
+                        typer.echo(f"OK      {source} {o.ref.name} {o.detail}")
+
+                outcomes = ap.fetch(
+                    client, store, today_ist(), name, first=first, last=last, on_outcome=show
+                )
+            except SourceBlockedError as exc:
+                typer.echo(f"BLOCKED {source}: {exc}. Stopping; do not retry.", err=True)
+                raise typer.Exit(1) from None
+            except Exception as exc:
+                typer.echo(f"FAILED  {source}: {type(exc).__name__}: {exc}", err=True)
+                failed += 1
+                continue
+            counts = {
+                s: sum(o.status == s for o in outcomes) for s in ("fetched", "exists", "failed")
+            }
+            failed += counts["failed"]
+            typer.echo(
+                f"{source}: {counts['fetched']} fetched, {counts['exists']} already stored, "
+                f"{counts['failed']} FAILED"
+            )
+    if failed:
+        raise typer.Exit(1)
+
+
+amc_portfolio_app = typer.Typer(
+    help="Feeder-fund units and ETF AUM from the AMCs' monthly portfolio files (D46)."
+)
+app.add_typer(amc_portfolio_app, name="amc-portfolio")
+
+
+def _amc_context(root: str | None):
+    from pathlib import Path
+
+    from etfp.clean import make_context
+
+    return make_context(Path(root) if root else None)
+
+
+@amc_portfolio_app.command("summary")
+def amc_portfolio_summary(
+    out: Annotated[
+        str | None,
+        typer.Option("--out", help="Folder to write fof_monthly_auto.csv, units_monthly_auto.csv"),
+    ] = None,
+    root: Annotated[
+        str | None, typer.Option("--root", help="Project root (default: this one)")
+    ] = None,
+) -> None:
+    """Parse every saved portfolio file and print the automatic fof_monthly / units_monthly rows.
+
+    Writes nothing to data/clean. With --out, also writes the two tables as CSV there.
+    """
+    from pathlib import Path
+
+    from etfp.clean import amc_portfolio as cap
+
+    _configure_logging()
+    ctx = _amc_context(root)
+    fof = cap.fof_rows(ctx)
+    units = cap.units_rows(ctx)
+    typer.echo(f"fof_monthly rows: {len(fof)}; units_monthly rows: {len(units)}")
+    for name, frame, key in (
+        ("fof_monthly", fof, "etf_symbol"),
+        ("units_monthly", units, "symbol"),
+    ):
+        for sym, g in frame.groupby(key):
+            typer.echo(
+                f"  {name} {sym}: {len(g)} months, {g['month_end'].min()} .. {g['month_end'].max()}"
+            )
+    if out:
+        folder = Path(out)
+        folder.mkdir(parents=True, exist_ok=True)
+        fof.to_csv(folder / "fof_monthly_auto.csv", index=False)
+        units.to_csv(folder / "units_monthly_auto.csv", index=False)
+        typer.echo(f"written to {folder}")
+
+
+@amc_portfolio_app.command("crosscheck")
+def amc_portfolio_crosscheck(
+    root: Annotated[
+        str | None, typer.Option("--root", help="Project root (default: this one)")
+    ] = None,
+) -> None:
+    """Compare AUM/NAV units with NSE's units outstanding (data/clean/units_daily) per month end."""
+    import pandas as pd
+
+    from etfp import paths as _paths
+    from etfp.clean import amc_portfolio as cap
+
+    _configure_logging()
+    ctx = _amc_context(root)
+    base = _paths.clean_dir() if root is None else ctx.raw_root.parent / "clean"
+    daily = pd.read_parquet(base / "units_daily.parquet")
+    table = cap.crosscheck(ctx, daily)
+    if table.empty:
+        typer.echo("no month end has both an AMC portfolio and an NSE units row")
+        return
+    pd.set_option("display.width", 200)
+    typer.echo(table.to_string(index=False, float_format=lambda v: f"{v:,.2f}"))
+
+
 if __name__ == "__main__":
     app()

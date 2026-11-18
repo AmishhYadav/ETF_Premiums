@@ -14,6 +14,9 @@ File ``data/manual/units_monthly.csv``. Columns: symbol, month_end (last day of 
 month), aum (rupees, NOT crores), nav (rupees), units (blank = aum / nav),
 source (where the figures came from, e.g. "amfi", "factsheet 2022-01").
 If all of aum, nav and units are given they must agree within 1%.
+
+Months with no typed row are filled automatically from the fund houses' monthly portfolio
+files (``etfp.clean.amc_portfolio``, D46); a typed row always wins.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ import logging
 
 import pandas as pd
 
+from etfp.clean import amc_portfolio
 from etfp.clean.common import CleanContext, CleanError, concat_frames
 from etfp.clean.manual_csv import Row, is_month_end, read_rows
 
@@ -77,7 +81,7 @@ def build(ctx: CleanContext) -> pd.DataFrame:
         optional=["aum", "nav", "units"],
     )
     if not rows:
-        return concat_frames([], COLUMNS)
+        return amc_portfolio.merge_units(ctx, concat_frames([], COLUMNS))
     known = ctx.etf_symbols()
     parsed = [_parse_row(r, known) for r in rows]
     seen: dict[tuple[object, object], str] = {}
@@ -89,5 +93,6 @@ def build(ctx: CleanContext) -> pd.DataFrame:
             )
         seen[key] = str(rec["source_file"])
     out = pd.DataFrame(parsed, columns=COLUMNS)
-    logger.info("%s: %d rows for %d ETF(s)", TABLE, len(out), out["symbol"].nunique())
-    return out
+    logger.info("%s: %d typed rows for %d ETF(s)", TABLE, len(out), out["symbol"].nunique())
+    # Months not typed by hand come from the AMCs' monthly portfolio files: AUM / NAV (D46).
+    return amc_portfolio.merge_units(ctx, out)

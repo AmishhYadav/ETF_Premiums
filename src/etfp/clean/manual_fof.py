@@ -16,6 +16,9 @@ etf_symbol, aum, etf_units_held, fof_net_flow, subscription_status (open,
 lump_sum_shut, sip_shut or shut), notice_date (date of the notice that set the
 status). Only the first four are required.
 
+Months with no typed row are filled automatically from the fund houses' monthly portfolio
+files (``etfp.clean.amc_portfolio``, D46); a typed row always wins.
+
 ``feeder_units_daily`` turns the monthly rows into a daily series (needed later
 for ``float_net`` = (units outstanding - feeder units) x NAV).
 """
@@ -29,6 +32,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
+from etfp.clean import amc_portfolio
 from etfp.clean.common import CleanContext, CleanError, concat_frames
 from etfp.clean.manual_csv import Row, is_month_end, read_rows
 
@@ -79,7 +83,7 @@ def build(ctx: CleanContext) -> pd.DataFrame:
         ],
     )  # fmt: skip
     if not rows:
-        return concat_frames([], COLUMNS)
+        return amc_portfolio.merge_fof(ctx, concat_frames([], COLUMNS))
     known = ctx.etf_symbols()
     parsed = [_parse_row(r, known) for r in rows]
 
@@ -102,8 +106,9 @@ def build(ctx: CleanContext) -> pd.DataFrame:
             )
         held_symbol.setdefault(code, (rec["etf_symbol"], str(rec["source_file"])))
     out = pd.DataFrame(parsed, columns=COLUMNS)
-    logger.info("%s: %d rows for %d feeder(s)", TABLE, len(out), len(held_symbol))
-    return out
+    logger.info("%s: %d typed rows for %d feeder(s)", TABLE, len(out), len(held_symbol))
+    # Months not typed by hand come from the AMCs' own monthly portfolio files (D46).
+    return amc_portfolio.merge_fof(ctx, out)
 
 
 _NAT = np.datetime64("NaT", "D")  # "no date", with an explicit day unit
