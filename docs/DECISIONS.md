@@ -636,3 +636,4 @@ Rehearsal for the one December 2026 terminal session. Synthetic files in the doc
 | Nippon iNAV feed frozen / stale | iNAV alerts, robustness check | RESOLVED (D49): one value per ETF on 16-17 Nov (and 10, 14 Nov); not trusted |
 | Motilal US-ETF iNAV = previous NAV x FX move only | iNAV alerts, fair-value robustness check | RESOLVED (D49): MON100 and MONQ50 share one factor; not trusted for them, MOM100 trusted |
 | Mirae iNAV trustworthy | iNAV alerts | PARTLY (D49): moves, tracks US/HK; first tick of day stale, prev_nav lags to ~10:00; no independent iNAV to compare (needs nse_quote) |
+| NSE full bhavcopy dated 4 Nov 2021 (Muhurat) holds 3 Nov data (`DATE1` = 03-Nov-2021) | prices_daily, every ETF (one missing session) | OPEN (D53): fetch the real 4 Nov file (UDiFF not available before 2024) or mark the session in config/raw_exceptions.yaml |
