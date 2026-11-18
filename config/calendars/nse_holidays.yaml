@@ -29,19 +29,26 @@ extra_holidays: []
 # close, not the 6 Nov close 227.58). Existence of each date confirmed on
 # 2026-11-14 by HTTP 200 for NSE's full bhavcopy (DECISIONS D24). The calendar
 # stores the normal 09:15-15:30 times for these days; the real session was in
-# the evening (exact times VERIFY from the NSE circular of each year).
+# the evening, or (2025, 2026) in the afternoon. Real times, read 18 Nov 2026 from
+# the NSE CMTR circular of each year (saved under data/raw/rules/2026-11-18/,
+# DECISIONS D47): normal market 2021 18:15-19:15 (CMTR50050), 2022 18:15-19:15
+# (CMTR54023), 2023 18:15-19:15 (CMTR59124), 2024 18:00-19:00 (CMTR64628),
+# 2025 13:45-14:45 (CMTR70319), 2026 14:20-15:30, pre-open 14:05-14:20
+# (CMTR76941). The calendar still returns 09:15-15:30 for these days; that does
+# not change any result because the only users are India-close comparisons against
+# HK (13:30 IST) and US (after 20:30 IST) closes (nav_align, yahoo_intraday).
 extra_sessions:
-  - {date: 2021-11-04, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
-  - {date: 2022-10-24, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
-  - {date: 2023-11-12, reason: "Diwali Muhurat session, Sunday (bhavcopy HTTP 200, D24)"}
+  - {date: 2021-11-04, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24); normal market 18:15-19:15 IST, NSE/CMTR/50050 (D47)"}
+  - {date: 2022-10-24, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24); normal market 18:15-19:15 IST, NSE/CMTR/54023 (D47)"}
+  - {date: 2023-11-12, reason: "Diwali Muhurat session, Sunday (bhavcopy HTTP 200, D24); normal market 18:15-19:15 IST, NSE/CMTR/59124 (D47)"}
   - {date: 2024-01-20, reason: "Special Saturday full session (22 Jan 2024 declared a holiday); bhavcopy HTTP 200, D32"}
   - {date: 2024-03-02, reason: "Special Saturday session (disaster-recovery test, narrow bands); bhavcopy + security master HTTP 200, D32"}
   - {date: 2024-05-18, reason: "Special Saturday session (disaster-recovery test, narrow bands); bhavcopy + security master HTTP 200, D32"}
-  - {date: 2024-11-01, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
-  - {date: 2025-02-01, reason: "Union Budget special session, Saturday. Evidence (D38): 3 Feb 2025 PREV_CLOSE differs from the 31 Jan close (NIFTYBEES 262.13 vs 263.00); AMFI NAVs dated 1 Feb for domestic funds; the security master dated 31 Jan matches +/-20% of NAV(30 Jan) exactly for all 12 ETFs. Raw files for this date not yet downloaded"}
-  - {date: 2025-10-21, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24)"}
-  - {date: 2026-02-01, reason: "Union Budget special session, Sunday. Evidence (D38): 2 Feb 2026 PREV_CLOSE differs from the 30 Jan close (NIFTYBEES 282.41 vs 286.73); AMFI NAVs dated 1 Feb for domestic funds; the security master dated 30 Jan matches +/-20% of NAV(29 Jan) exactly for all 12 ETFs. Raw files for this date not yet downloaded"}
-  - {date: 2026-11-08, reason: "Diwali Muhurat session, Sunday (UDiFF + security master HTTP 200, D24)"}
+  - {date: 2024-11-01, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24); normal market 18:00-19:00 IST, NSE/CMTR/64628 (D47)"}
+  - {date: 2025-02-01, reason: "Union Budget special session, Saturday. Evidence (D38): 3 Feb 2025 PREV_CLOSE differs from the 31 Jan close (NIFTYBEES 262.13 vs 263.00); AMFI NAVs dated 1 Feb for domestic funds; the security master dated 31 Jan matches +/-20% of NAV(30 Jan) exactly for all 12 ETFs. Announced in NSE/CMTR/65729 (23 Dec 2024), normal market 09:15-15:30 IST, i.e. the usual hours (D47)"}
+  - {date: 2025-10-21, reason: "Diwali Muhurat session (bhavcopy HTTP 200, D24); normal market 13:45-14:45 IST, NSE/CMTR/70319 (D47)"}
+  - {date: 2026-02-01, reason: "Union Budget special session, Sunday. Evidence (D38): 2 Feb 2026 PREV_CLOSE differs from the 30 Jan close (NIFTYBEES 282.41 vs 286.73); AMFI NAVs dated 1 Feb for domestic funds; the security master dated 30 Jan matches +/-20% of NAV(29 Jan) exactly for all 12 ETFs. Announced in NSE/CMTR/72349 (16 Jan 2026), normal market 09:15-15:30 IST, i.e. the usual hours (D47)"}
+  - {date: 2026-11-08, reason: "Diwali Muhurat session, Sunday (UDiFF + security master HTTP 200, D24); normal market 14:20-15:30 IST, NSE/CMTR/76941 (D47)"}
 
 # Holidays for years BEYOND the library's recorded range (2027 onwards), as
 # year -> list of dates (weekday holidays only matter; weekends are already

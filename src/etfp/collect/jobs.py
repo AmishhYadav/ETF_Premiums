@@ -35,12 +35,14 @@ from etfp import calendars
 from etfp.collect import (
     amfi_nav,
     bse_bhavcopy,
+    fbil_refrates,
     ibja_rates,
     notices,
     nse_bhavcopy,
     nse_etf_listfile,
     nse_secmaster,
     nse_slb,
+    nse_symbolchange,
     nse_udiff,
     yahoo_intraday,
 )
@@ -69,6 +71,8 @@ BSE = "bse"  # BSE daily bhavcopy (R9)
 SLB = "slb"  # NSE securities lending: eligible list + SLB bhavcopy (R8)
 NOTICES = "notices"  # SEBI + NSE notice listings (notice reader, SPEC section 3)
 IBJA = "ibja"  # IBJA gold/silver reference rates (bullion module, D35; research only, D41)
+FBIL = "fbil"  # FBIL official rupee reference rates, 31-day rolling window (D43, D45)
+SYMBOLCHANGE = "symbolchange"  # NSE symbol-change list, checked against config at build (D45)
 
 DAILY_SOURCES: tuple[str, ...] = (
     BHAVCOPY,
@@ -82,6 +86,8 @@ DAILY_SOURCES: tuple[str, ...] = (
     SLB,
     NOTICES,
     IBJA,
+    FBIL,
+    SYMBOLCHANGE,
 )
 # NSE's list file and AMFI's NAVAll are "latest only" snapshots, so they cannot be backfilled.
 BACKFILL_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
@@ -97,6 +103,8 @@ SOURCE_HELP = {
     SLB: "NSE securities lending: eligible list and SLB bhavcopy",
     NOTICES: "SEBI RSS + Legal listing and NSE circulars (last 7 days)",
     IBJA: "IBJA gold/silver reference rates page (latest snapshot only; research use only)",
+    FBIL: "FBIL rupee reference rates, the 31 days ending on the run day (one request)",
+    SYMBOLCHANGE: "NSE symbol-change list (latest snapshot only; build checks it against config)",
 }
 
 NSE_HOST = "nseindia.com"
@@ -104,6 +112,7 @@ BSE_HOST = "bseindia.com"
 AMFI_HOST = "amfiindia.com"
 YAHOO_HOST = "finance.yahoo.com"
 IBJA_HOST = "ibjarates.com"
+FBIL_HOST = fbil_refrates.HOST
 SEBI_HOST = notices.SEBI_HOST
 
 # AMFI answers a 12-day window (about 9 MB) but a 30-day window did not finish within 30 s
@@ -360,6 +369,39 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
                     f"{ibja_rates.SOURCE} {day.isoformat()}: skipped, the IBJA page only holds "
                     "the latest rates (its chart data covers recent past days)"
                 )
+        elif key == FBIL:
+            # One request for the 31 calendar days ending on the run day. The public feed
+            # lags about a week (D43), so each run re-asks a rolling window; overlapping
+            # windows are fine (the cleaner keeps the newest file's rate per date). Not in
+            # the catch-up: the window already reaches back further than the catch-up does.
+            start = day - timedelta(days=fbil_refrates.DAILY_WINDOW_DAYS - 1)
+            units.append(
+                Unit(
+                    source=fbil_refrates.SOURCE,
+                    day=day,
+                    name=fbil_refrates.raw_name(start, day),
+                    host=FBIL_HOST,
+                    fetch=lambda c, s, start=start: fbil_refrates.fetch(c, s, day, start, day),
+                )
+            )
+        elif key == SYMBOLCHANGE:
+            # NSE overwrites one list in place, so only "today" can be saved honestly.
+            # Daily (not weekly): ~70 KB, one request, and an identical list is stored
+            # once; a rename takes effect the morning NSE announces it, so the daily check
+            # is what gives the build a chance to warn before a fund's history splits.
+            if day == today:
+                units.append(
+                    _nse_unit(
+                        nse_symbolchange,
+                        day,
+                        lambda c, s: nse_symbolchange.fetch(c, s, day),
+                    )
+                )
+            else:
+                notes.append(
+                    f"{nse_symbolchange.SOURCE} {day.isoformat()}: skipped, the list only "
+                    "exists as today's latest version; run this on the day itself"
+                )
         else:
             raise ValueError(f"unknown source {key!r}")
     return Plan(units, notes)
@@ -494,7 +536,8 @@ def plan_backfill(start: date, end: date, sources: Sequence[str], *, now: dateti
 # also looks back a few calendar days and fetches the dated files that are still missing.
 CATCH_UP_DAYS = 7
 # Sources that can be asked for any past day. The "latest only" snapshots (NSE ETF list,
-# AMFI NAVAll, IBJA, SEBI RSS) cannot be caught up, and notices already use a 7-day window.
+# AMFI NAVAll, IBJA, SEBI RSS, NSE symbol changes) cannot be caught up; notices and FBIL
+# already re-ask a rolling window (7 and 31 days) every run.
 CATCH_UP_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
 
 

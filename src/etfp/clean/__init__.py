@@ -49,6 +49,7 @@ from etfp.clean import (
     notices,
     prices_daily,
     slb,
+    symbol_changes,
     underlying_values,
     units_daily,
 )
@@ -80,6 +81,7 @@ CLEANERS = (
     ("bullion_ref_daily", bullion_ref),
     ("notices", notices),  # SEBI/NSE notices with keyword guesses (candidates only)
     ("fx_ref_daily", fx_ref),  # FBIL official rupee reference rates (D43)
+    ("symbol_changes", symbol_changes),  # NSE renames vs config former_symbols (D45)
     ("underlying_bar_values", underlying_values),  # free futures/FX at 15:30 IST (D43)
 )
 

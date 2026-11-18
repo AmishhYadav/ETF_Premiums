@@ -33,7 +33,9 @@ NAVs.
 ### The steps of `etfp run daily`
 
 1. **collect**: evening downloads every source `etfp collect daily` knows (NSE bhavcopy, UDiFF,
-   security master, ETF list, AMFI NAVAll and history, Yahoo). Morning does two things for the
+   security master, ETF list, AMFI NAVAll and history, Yahoo, BSE, SLB, notices, IBJA, and
+   since 18 Nov 2026 FBIL rupee rates (one request for the 31 days ending on the run day) and
+   NSE's symbol-change list). Morning does two things for the
    *previous session*: fills any gap left by the evening run (files already stored are
    skipped, so this costs almost nothing), and downloads the AMFI history window again with
    force. The new copy is stored beside the old one as `.v2`; the build uses the newest.
@@ -91,8 +93,8 @@ that day, and Yahoo bars (while Yahoo still holds them).
 * A 404 for an older day is remembered in `data/state/backfill_state.json` (note "during
   daily catch-up"), exactly like a backfill, so a file NSE never published is not asked for
   every day. `uv run etfp backfill --from <day> --retry-unavailable` asks again.
-* "Latest file only" snapshots (NSE ETF list, AMFI NAVAll, IBJA, SEBI RSS) cannot be caught
-  up; notices already use a 7-day window.
+* "Latest file only" snapshots (NSE ETF list, AMFI NAVAll, IBJA, SEBI RSS, NSE symbol
+  changes) cannot be caught up; notices already use a 7-day window and FBIL a 31-day window.
 * The output shows `NOTE        catch-up: N missing file(s) from earlier sessions: <days>`,
   and the run record lists them under `catch_up_days`.
 * For a gap older than 7 days, use `uv run etfp backfill --from <day>` (section 5).
@@ -235,8 +237,9 @@ uv run etfp run daily --date 2026-11-12 --no-alerts
 
 Limits of a past date:
 
-* The NSE ETF list and AMFI NAVAll only exist as "today's latest file", so they are skipped
-  for any day but today (the output says so). The AMFI history window covers past dates.
+* The NSE ETF list, AMFI NAVAll and NSE symbol-change list only exist as "today's latest
+  file", so they are skipped for any day but today (the output says so). FBIL is asked for
+  the 31 days ending on the date you give. The AMFI history window covers past dates.
 * Yahoo keeps only about 59 days of 5-minute bars (D22). Older days cannot be recovered.
 * If you re-run a date whose alerts were already sent, nothing is sent twice (alerts remember
   what they sent in `data/state/alerts_sent.json`).
@@ -383,3 +386,112 @@ shown to be dead or 2 hours old; see "The overlap lock" above.
   or asleep; re-run the day (section 4).
 * The error log says `uv: command not found`: the plist's PATH did not include `uv`. Regenerate
   the plist (`etfp ops launchd-plist --job ...`) from a shell where `which uv` works.
+
+## 8. Hosting the dashboard (not done; owner decision)
+
+Status: **prepared only.** Nothing has been uploaded, no account exists, no URL exists. Hosting
+is a public step, so it is Amish's decision (CLAUDE.md). The plan below is free
+(DECISIONS D41: no paid hosting) and uses Streamlit Community Cloud.
+
+### Why a snapshot is needed
+
+The page reads `data/clean/` on the Mac. A hosted page cannot see that folder, and the full
+tables hold values we do not republish (D41) and licensed data (Bloomberg, Yahoo). So a small
+derived-only folder is written and the hosted page reads that instead.
+
+### What gets published
+
+`uv run etfp export dashboard` writes `exports/dashboard/` (about 2.6 MB for 41,148 ETF-days):
+
+| File | Contents |
+|---|---|
+| `etf_day.parquet` | `symbol`, `date`, `prem_raw`, `prem_nav_known`, `prem_band_ref`, `x_april`, computed price limits (`band_low/high_initial`, `band_low/high_max`), `hit_up`, `units_change`, `creation_units_change`, and the `dq_*` flags. 30 ETFs (6 tracked, 2 bullion, 22 domestic controls), 2021-01-01 to the last build. |
+| `etf_master.parquet` | symbol, name, AMC, index, market, asset class, group label, tracked (only funds that have rows). |
+| `events.parquet` | the events log (rule changes, cautions, notices, unit-change events). |
+| `manifest.json`, `README.md` | build time (IST), data-through date, row counts, columns, file hashes, the SPEC section 9 disclaimer, and the list of sources whose licence check is still open. |
+
+Left out, by `config/dataset.yaml` (the same file that governs the open dataset, D34/D41): prices,
+NAVs, fair value (`fv`, `prem_fv`, `fv_method`), official price limits, units outstanding,
+volumes, BSE figures, `usdinr_ref`, iNAV snapshots, anything from Bloomberg or Yahoo, and the
+`source_file` lineage columns. A column the config does not classify stops the export
+(`DASHBOARD EXPORT REFUSED`), and the denied-column check runs again on the written files.
+The hosted page therefore shows premiums over the **known NAV** (not fair value), x_april, the
+computed limits, the domestic-controls comparison, the events log and data-quality flags. It
+says so in a banner. The Intraday iNAV tab and the price/NAV chart are empty there.
+
+Try it locally first, with no upload:
+
+```
+uv run etfp export dashboard
+ETFP_DASHBOARD_DATA=exports/dashboard uv run --extra dashboard streamlit run dashboard/app.py
+```
+
+(`ETFP_DASHBOARD_DATA` points the page at a snapshot folder. Without it, the page uses
+`data/clean`, and falls back to a `dashboard_data/` folder next to `dashboard/` when
+`data/clean` is empty, which is how the hosted copy finds its data.)
+
+### Steps for Amish (nothing here has been done)
+
+1. **Settle the licence checks below first.** Do not publish before they are answered.
+2. **Decide where the code lives.** Community Cloud deploys from a GitHub repository, so the
+   snapshot has to be in that repository.
+   * Option A: make this repository public (code is MIT, D41). Everything tracked in git
+     becomes public, including `docs/` and `config/`; check `git ls-files` first. The untracked
+     `paper/` folder and the research PDFs are not in git, but keep them out of every commit.
+   * Option B (smaller exposure): a new public repository that holds only `dashboard/`, `src/`,
+     `config/`, `pyproject.toml`, `LICENSE` and `dashboard_data/`.
+   * Option C: keep the repository private; Community Cloud can deploy a private repository
+     (check the current free-tier terms on the site before relying on this).
+3. **Make the snapshot** and copy it to where the hosted page looks:
+   ```
+   uv run etfp build
+   uv run etfp export dashboard --out dashboard_data
+   git add dashboard_data && git status        # read the file list; expect 5 files, no .env
+   ```
+   `dashboard_data/` is not in `.gitignore` on purpose. `data/`, `exports/` and `.env` are, so a
+   plain `git add -A` still cannot pick up raw data, Bloomberg files or tokens, but read
+   `git status` before every commit anyway.
+4. **Commit and push** (Amish's decision to publish). Do not commit `data/raw`, Bloomberg
+   files, `.env` or `paper/`.
+5. **Create the app** at share.streamlit.io: sign in with the GitHub account, "Create app",
+   pick the repository and branch, main file `dashboard/app.py`, Python 3.12. No secrets are
+   needed: the hosted page makes no network calls and holds no tokens. The Telegram token stays
+   in `.env` on the Mac and is never uploaded.
+6. **Open the URL and check** the banner ("Public snapshot built ..."), the disclaimer at the top
+   and bottom, and that the Overview lists the 6 tracked ETFs and not the controls.
+7. **Refresh by hand** (or ask Claude to script it): after a good build run
+   `uv run etfp export dashboard --out dashboard_data`, then commit and push the five files.
+   Community Cloud redeploys on push; the page cache lasts 10 minutes. There is no automatic
+   upload; the scheduler never pushes anything. Free apps go to sleep after a few days without
+   visitors and wake on the next visit.
+
+`dashboard/requirements.txt` lists the packages a hosted copy needs (Community Cloud reads it
+first because it sits next to `app.py`); the app adds `src/` to its import path, so the project
+itself is not installed there.
+
+### Licence checks still OPEN (D34 VERIFY)
+
+The snapshot is derived (D41), but it is computed from these sources and no one has confirmed
+that a public page of derived figures is allowed:
+
+* **NSE**: bhavcopy, UDiFF, security master, ETF list, price-band files. The website terms limit
+  reproduction and commercial use. Read nseindia.com's terms and, if unclear, ask NSE data
+  sales whether free, non-commercial, derived premiums may be shown.
+* **BSE**: daily bhavcopy (feeds `turnover`). Terms not read.
+* **AMFI**: NAV files (the NAV is half of every premium). Terms not read.
+* AMC iNAV pages and monthly disclosures (units, AUM): they feed `units_change`, the
+  creation flags and the limit days; not read.
+* Google Trends is not in the snapshot.
+* Bloomberg and Yahoo are excluded by construction and need no check.
+
+Record what Amish finds in `docs/DECISIONS.md` (it is the D34 row in the open-questions table).
+
+### Open points on the hosting side (verify at first deploy)
+
+* Whether Community Cloud's current free tier allows a private repository and how long an idle
+  app sleeps. Check the Streamlit docs when deploying.
+* `dashboard/requirements.txt` has not been tried on Community Cloud; if the build fails on a
+  package, the error log names it.
+* The disclaimer and the "not investment advice" wording are in the page and in the snapshot's
+  `README.md`/`manifest.json`; a short About/terms line with a contact route for corrections is
+  Amish's call before going public.

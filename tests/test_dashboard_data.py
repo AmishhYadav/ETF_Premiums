@@ -423,3 +423,121 @@ def test_event_markers_filter_and_placement() -> None:
     assert len(every) == 4 and date(2026, 10, 10) in [m.day for m in every]
     assert dd.event_markers(events, ["MAFANG"])[-1].label == "media: News"
     assert dd.event_markers(None, ["X"]) == [] and dd.event_markers(events.iloc[0:0]) == []
+
+
+# --------------------------------------------------------------------------
+# Domestic controls, fair-value note, data folder
+# --------------------------------------------------------------------------
+def _controls_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
+    rows = []
+    # Known-NAV premiums per day: tracked T; controls C1, C2, C3.
+    vals = {"T": [0.50, 0.60], "C1": [0.00, 0.01], "C2": [0.02, 0.03], "C3": [0.04, 0.08]}
+    for sym, series in vals.items():
+        for day, v in zip((D12, D13), series, strict=True):
+            rows.append({"symbol": sym, "date": day, "prem_nav_known": v})
+    master = pd.DataFrame(
+        {
+            "symbol": ["T", "C1", "C2", "C3"],
+            "group_label": ["blocked", "control", "control", "control"],
+            "tracked": [True, False, False, True],  # a control marked tracked is still a control
+        }
+    )
+    return pd.DataFrame(rows), master
+
+
+def test_control_symbols_and_tracked_symbols_exclude_controls() -> None:
+    day, master = _controls_frames()
+    assert dd.control_symbols(master) == ["C1", "C2", "C3"]
+    assert dd.tracked_symbols(day, master) == ["T"]  # C3 has tracked=True but is a control
+    assert dd.control_symbols(None) == []
+    assert dd.control_symbols(pd.DataFrame({"symbol": ["A"]})) == []  # no group_label column
+
+
+def test_controls_comparison_median_by_hand() -> None:
+    day, master = _controls_frames()
+    out = dd.controls_comparison(day, master, ["T"], "prem_nav_known")
+    med = out[out["symbol"] == dd.CONTROL_LABEL].set_index("date")["value"]
+    assert med[D12] == pytest.approx(0.02)  # median of 0.00, 0.02, 0.04
+    assert med[D13] == pytest.approx(0.03)  # median of 0.01, 0.03, 0.08
+    assert sorted(set(out["symbol"])) == [dd.CONTROL_LABEL, "T"]
+    latest = dd.controls_latest(out)
+    assert latest.to_dict("records") == [
+        {
+            "symbol": "T", "date": D13, "value": 0.60, "control_median": pytest.approx(0.03),
+            "gap": pytest.approx(0.57),
+        }
+    ]  # fmt: skip
+    # start filter and no controls
+    after = dd.controls_comparison(day, master, ["T"], "prem_nav_known", start=D13)
+    assert set(after["date"]) == {D13}
+    no_ctl = dd.controls_comparison(day, master.iloc[:1], ["T"], "prem_nav_known")
+    assert set(no_ctl["symbol"]) == {"T"}
+
+
+def test_primary_premium_column_falls_back_without_fair_value() -> None:
+    assert dd.primary_premium_column(None) is None
+    both = pd.DataFrame({"prem_fv": [0.1], "prem_nav_known": [0.2]})
+    assert dd.primary_premium_column(both) == "prem_fv"
+    empty_fv = pd.DataFrame({"prem_fv": [np.nan], "prem_nav_known": [0.2], "prem_raw": [0.3]})
+    assert dd.primary_premium_column(empty_fv) == "prem_nav_known"
+    assert dd.primary_premium_column(pd.DataFrame({"prem_raw": [0.3]})) == "prem_raw"
+
+
+def test_overview_sorts_by_nav_premium_when_there_is_no_fair_value() -> None:
+    day = pd.DataFrame(
+        {
+            "symbol": ["A", "B"], "date": [D13, D13], "close": [None, None],
+            "prem_nav_known": [0.1, 0.4],
+        }
+    )  # fmt: skip
+    assert list(dd.latest_overview(day, None)["symbol"]) == ["B", "A"]
+
+
+def test_fair_value_note_words() -> None:
+    nav_only = pd.DataFrame({"fv_method": ["nav_only", "nav_only", None]})
+    note = dd.fair_value_note(nav_only)
+    assert note and "latest known NAV" in note and "nav_only" in note
+    assert "equals premium over the latest known NAV" in note
+    mixed = pd.DataFrame({"fv_method": ["nav_only", "futures", "futures"]})
+    assert "1 of 3 funds" in dd.fair_value_note(mixed)
+    assert dd.fair_value_note(pd.DataFrame({"fv_method": ["futures"]})) is None
+    assert dd.fair_value_note(pd.DataFrame({"x": [1]})) is None  # snapshot: no fv_method column
+    assert dd.fair_value_note(pd.DataFrame()) is None
+
+
+def test_resolve_data_dir_order(tmp_path: Path) -> None:
+    import json
+
+    clean = tmp_path / "data" / "clean"
+    hosted = tmp_path / "dashboard_data"
+    hosted.mkdir()
+    assert dd.resolve_data_dir(clean, tmp_path, {}) == (clean, False)  # nothing anywhere
+    (hosted / "manifest.json").write_text(json.dumps({"kind": dd.SNAPSHOT_KIND}))
+    assert dd.resolve_data_dir(clean, tmp_path, {}) == (hosted, True)  # hosted copy
+    clean.mkdir(parents=True)
+    (clean / "etf_day.parquet").write_bytes(b"x")
+    assert dd.resolve_data_dir(clean, tmp_path, {}) == (clean, False)  # local data wins
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    env = {dd.DATA_DIR_ENV: str(other)}
+    assert dd.resolve_data_dir(clean, tmp_path, env) == (
+        other,
+        False,
+    )  # env var wins, not a snapshot
+    (other / "manifest.json").write_text(json.dumps({"kind": dd.SNAPSHOT_KIND}))
+    assert dd.resolve_data_dir(clean, tmp_path, env) == (other, True)
+    assert dd.snapshot_manifest(tmp_path) is None
+
+
+def test_new_labels_and_snapshot_text_have_no_advice_words() -> None:
+    assert not BANNED.search(dd.CONTROL_LABEL)
+    for text in (
+        dd.fair_value_note(pd.DataFrame({"fv_method": ["nav_only"]})),
+        dd.fair_value_note(pd.DataFrame({"fv_method": ["nav_only", "futures"]})),
+    ):
+        assert text and not BANNED.search(text)
+    from etfp import export_dashboard
+
+    assert not BANNED.search(export_dashboard.README_TEXT)
+    path = ROOT / "src" / "etfp" / "export_dashboard.py"
+    assert not BANNED.findall(path.read_text(encoding="utf-8"))

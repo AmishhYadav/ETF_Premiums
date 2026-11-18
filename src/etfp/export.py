@@ -1408,6 +1408,20 @@ def _valve_counts(vm: pd.DataFrame | None) -> dict[str, dict[str, int]] | None:
     }
 
 
+def _symbol_change_warnings(store: Store) -> list[str]:
+    """NSE renames of configured ETFs that config former_symbols does not map (D45)."""
+    from etfp.clean import symbol_changes
+
+    try:
+        frame = store.read_table(symbol_changes.TABLE)
+    except Exception:  # table not built yet: say so instead of reporting "no warnings"
+        return ["symbol_changes table not built; renames are not checked"]
+    return [
+        f"{r.etf_symbol}: {r.detail}"
+        for r in symbol_changes.warnings_in(frame).itertuples(index=False)
+    ]
+
+
 def _manifest(
     store: Store,
     cfg: Any,
@@ -1498,5 +1512,6 @@ def _manifest(
         "valve_status_counts_by_symbol": _valve_counts(frames.get("valve_monthly")),
         "creation_unit_sizes_missing": units.missing_creation_unit_sizes(needed, sizes),
         "open_verify_items": parse_open_verify_items(decisions_path),
+        "symbol_change_warnings": _symbol_change_warnings(store),
         "files": files,
     }

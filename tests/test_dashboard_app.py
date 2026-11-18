@@ -132,3 +132,109 @@ def test_page_runs_with_data(project: Path) -> None:
     metrics = {m.label: m.value for m in at.metric}
     assert metrics["Latest data date"] == "2026-11-13"
     assert metrics["Premium over iNAV"] == "30.0%"  # 130 / 100 - 1
+
+
+# --------------------------------------------------------------------------
+# Controls, fair-value note, wording, hosted snapshot
+# --------------------------------------------------------------------------
+D1, D2 = date(2026, 11, 12), date(2026, 11, 13)
+
+
+def _write_controls_project(project: Path, *, nav_only: bool = True) -> None:
+    """Two tracked funds (X, Y) and three controls (C1, C2, C3), two days each.
+
+    Known-NAV premium on 13 Nov: X 0.50, Y 0.20; controls 0.01, 0.03, 0.02 -> control median 0.02.
+    """
+    store = Store(project / "data" / "clean")
+    rows = []
+    prem = {"X": (0.4, 0.5), "Y": (0.1, 0.2), "C1": (0.0, 0.01), "C2": (0.02, 0.03),
+            "C3": (0.01, 0.02)}  # fmt: skip
+    for sym, (p1, p2) in prem.items():
+        for day, p in ((D1, p1), (D2, p2)):
+            rows.append(
+                {
+                    "symbol": sym, "date": day, "close": 100.0 * (1 + p),
+                    "nav_known_at_close": 100.0, "fv": 100.0, "prem_fv": p,
+                    "prem_nav_known": p, "prem_raw": p, "hit_up": False,
+                    "fv_method": "nav_only" if nav_only else "futures",
+                }
+            )  # fmt: skip
+    store.write_table("etf_day", pd.DataFrame(rows))
+    groups = {"X": "blocked", "Y": "unclear", "C1": "control", "C2": "control", "C3": "control"}
+    store.write_table(
+        "etf_master",
+        blank_table(
+            "etf_master", symbol=list(groups), name=[f"Fund {s}" for s in groups],
+            group_label=list(groups.values()), tracked=[True, True, False, False, True],
+            source_file=["config/etfs.yaml"] * 5,
+        ),
+    )  # fmt: skip
+
+
+def test_controls_comparison_and_fair_value_note(project: Path) -> None:
+    _write_controls_project(project)
+    at = run_app()
+    assert not at.exception, [e.value for e in at.exception]
+    page = texts(at)
+    assert page.count(DISCLAIMER) >= 2 or DISCLAIMER in page
+    # Disclaimer at the very top (a warning before any tab) and at the very bottom (last caption).
+    assert at.warning[0].value == DISCLAIMER
+    assert at.caption[-1].value == DISCLAIMER
+    labels = [t.label for t in at.tabs]
+    assert "Domestic controls" in labels
+    overview = at.tabs[labels.index("Overview")].dataframe[0].value
+    assert sorted(overview["Symbol"]) == ["X", "Y"]  # tracked funds only; C3 is tracked: true
+    assert "nav_only" in " ".join(i.value for i in at.info)  # plain-words fair-value note
+    assert "latest known NAV" in " ".join(i.value for i in at.info)
+    controls_tab = at.tabs[labels.index("Domestic controls")]
+    latest = controls_tab.dataframe[0].value
+    assert sorted(latest["Symbol"]) == ["X", "Y"]
+    x_row = latest[latest["Symbol"] == "X"].iloc[0]
+    assert x_row["Control median (%)"] == pytest.approx(2.0)  # median of 1, 3, 2 percent
+    assert x_row["Difference (points)"] == pytest.approx(48.0)  # 50 - 2
+    assert any("3 controls are listed" in c.value for c in controls_tab.caption)
+    assert controls_tab.get("plotly_chart")  # the comparison chart is drawn
+
+
+def test_no_nav_only_note_when_fair_value_is_adjusted(project: Path) -> None:
+    _write_controls_project(project, nav_only=False)
+    at = run_app()
+    assert not at.exception
+    assert "nav_only" not in " ".join(i.value for i in at.info)
+
+
+def test_hosted_snapshot_mode(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The page runs from an `etfp export dashboard` folder with no data/clean at all."""
+    from etfp.export_dashboard import export_dashboard
+
+    _write_controls_project(project)
+    snap = project / "snapshot"
+    export_dashboard(Store(project / "data" / "clean"), snap, root=project,
+                     source_frames=_frames_for_snapshot(project))  # fmt: skip
+    shutil.rmtree(project / "data")
+    monkeypatch.setenv("ETFP_DASHBOARD_DATA", str(snap))
+    import streamlit as st
+
+    st.cache_data.clear()
+    at = run_app()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.warning[0].value == DISCLAIMER and at.caption[-1].value == DISCLAIMER
+    assert any("Public snapshot" in i.value for i in at.info)
+    labels = [t.label for t in at.tabs]
+    overview = at.tabs[labels.index("Overview")].dataframe[0].value
+    assert sorted(overview["Symbol"]) == ["X", "Y"]
+    assert "Close" not in overview.columns and "Fair value" not in overview.columns
+
+
+def _frames_for_snapshot(project: Path) -> dict:
+    """Full-width source frames (every etf_day column the licence config knows) for the export."""
+    from etfp import export
+
+    store = Store(project / "data" / "clean")
+    small = store.read_table("etf_day")
+    with export.etf_day_schema_registered() as schema:
+        full = pd.DataFrame({c: [None] * len(small) for c in schema.column_names})
+    for col in small.columns:
+        full[col] = small[col].to_numpy()
+    full["dq_missing_close"] = False
+    return {"etf_day": full, "etf_master": store.read_table("etf_master"), "events": None}

@@ -11,6 +11,10 @@ The dashboard only reads. It opens the Parquet files in ``data/clean`` and never
 file, so it cannot lock out ``etfp build``. It never calls a data source itself: what you see is
 what the last build wrote.
 
+Hosted copy: set ``ETFP_DASHBOARD_DATA`` to a folder written by ``etfp export dashboard`` (or put
+that folder at ``dashboard_data/``). That snapshot holds derived columns only (no prices, NAVs or
+fair value), so the page then shows premiums over the known NAV and says so.
+
 Text on this page describes the data. It does not say what anyone should do (CLAUDE.md).
 """
 
@@ -21,8 +25,12 @@ from datetime import timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:  # lets "from dashboard import ..." work when Streamlit runs this file
-    sys.path.insert(0, str(ROOT))
+for _path in (
+    ROOT,
+    ROOT / "src",
+):  # "from dashboard import ..." and "import etfp" without an install
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
@@ -58,9 +66,10 @@ def _file_stamp(clean_dir: Path) -> tuple:
 
 
 @st.cache_data(show_spinner="Reading the clean tables...", ttl=600)
-def _load(clean_dir: str, stamp: tuple) -> dd.Tables:
+def _load(clean_dir: str, stamp: tuple, snapshot: bool) -> dd.Tables:
     del stamp  # only part of the cache key
-    return dd.load_tables(Store(Path(clean_dir)))
+    folder = Path(clean_dir)
+    return dd.load_tables(dd.ParquetDirStore(folder) if snapshot else Store(folder))
 
 
 @st.cache_data(ttl=3600)
@@ -95,8 +104,9 @@ st.set_page_config(page_title="India international ETF premiums", layout="wide")
 st.title("India-listed international ETFs: premium over fair value")
 st.warning(dd.DISCLAIMER)
 
-store = Store()
-tables = _load(str(store.dir), _file_stamp(store.dir))
+data_dir, is_snapshot = dd.resolve_data_dir(Store().dir, ROOT)
+tables = _load(str(data_dir), _file_stamp(data_dir), is_snapshot)
+snapshot_info = dd.snapshot_manifest(data_dir) if is_snapshot else None
 now = now_ist()
 today = now.date()
 
@@ -114,6 +124,14 @@ master = tables.get("etf_master")
 symbols = dd.tracked_symbols(etf_day, master)
 latest_date = max(pd.to_datetime(etf_day["date"]).dt.date)
 
+if snapshot_info is not None:
+    st.info(
+        f"Public snapshot built {snapshot_info.get('built_ist', '?')[:16].replace('T', ' ')} IST, "
+        f"data through {snapshot_info.get('data_through', '?')}. It holds derived columns only: "
+        "no prices, NAVs, fair value, official price limits or intraday iNAV, so premiums are "
+        "shown over the latest known NAV."
+    )
+
 head = st.columns(3)
 head[0].metric("Latest data date", latest_date.isoformat())
 head[1].metric("Page loaded (IST)", now.strftime("%d %b %Y %H:%M"))
@@ -128,10 +146,20 @@ if not symbols:
     st.stop()
 
 events = tables.get("events")
-tab_overview, tab_detail, tab_april, tab_inav, tab_events, tab_quality, tab_about = st.tabs(
+(
+    tab_overview,
+    tab_detail,
+    tab_controls,
+    tab_april,
+    tab_inav,
+    tab_events,
+    tab_quality,
+    tab_about,
+) = st.tabs(
     [
         "Overview",
         "ETF detail",
+        "Domestic controls",
         "April 2027",
         "Intraday iNAV",
         "Events log",
@@ -147,12 +175,17 @@ with tab_overview:
     missing = dd.overview_missing_columns(etf_day)
     st.subheader("Latest row for each tracked ETF")
     st.caption(
-        "Premium = price above (or below) a reference value. Fair value = the latest known NAV "
-        "moved to the Indian close using the index future and the rupee rate. "
-        "Sorted by premium over fair value; click a column header to re-sort. "
+        "Premium = price above (or below) a reference value. Fair value = the latest known NAV, "
+        "moved to the Indian close using the index future and the rupee rate when that "
+        "adjustment is available. "
+        "Sorted by premium over fair value (over the known NAV where there is no fair value); "
+        "click a column header to re-sort. "
         "A premium is blank until the NAV it needs has been collected; "
         '"Premium as of" shows the date of the newest premium.'
     )
+    fv_note = dd.fair_value_note(overview)
+    if fv_note:
+        st.info(fv_note)
     money = st.column_config.NumberColumn(format="%.2f")
     one_dp = st.column_config.NumberColumn(format="%.1f")
     rupee_fields = ("close", "nav_known", "fv", "band_low", "band_high")
@@ -184,12 +217,18 @@ with tab_detail:
         start = latest_date - timedelta(days=HISTORY_RANGES[span])
 
     row = overview[overview["symbol"] == chosen].iloc[0]
-    cards = st.columns(5)
-    cards[0].metric("Close", _fmt_rs(row["close"]))
-    cards[1].metric("NAV known at close", _fmt_rs(row["nav_known"]))
-    cards[2].metric("Fair value", _fmt_rs(row["fv"]))
-    cards[3].metric("Premium, fair value", _fmt_pct(row["prem_fv"]))
-    cards[4].metric("Premium, same-day NAV", _fmt_pct(row["prem_raw"]))
+    card_values = [
+        ("Close", _fmt_rs(row["close"])),
+        ("NAV known at close", _fmt_rs(row["nav_known"])),
+        ("Fair value", _fmt_rs(row["fv"])),
+        ("Premium, fair value", _fmt_pct(row["prem_fv"])),
+        ("Premium, known NAV", _fmt_pct(row["prem_nav_known"])),
+        ("Premium, same-day NAV", _fmt_pct(row["prem_raw"])),
+    ]
+    card_values = [(k, v) for k, v in card_values if v != "n/a"] or card_values[:1]
+    cards = st.columns(len(card_values))
+    for slot, (label, value) in zip(cards, card_values, strict=True):
+        slot.metric(label, value)
     st.caption(f"{row['name']} ({chosen}); data for {row['data_date']}.")
 
     st.subheader("Premium history")
@@ -259,6 +298,87 @@ with tab_detail:
             "Shaded area: NSE's official initial limits. Dotted: computed initial limits; "
             "dashed: computed widest limits (gold and silver have no widest limit)."
         )
+
+# ---- Domestic controls ------------------------------------------------------------------------
+with tab_controls:
+    st.subheader("Tracked funds against domestic controls")
+    st.caption(
+        "Domestic controls are ordinary India-equity ETFs (Nifty 50, Next 50, Midcap, sector "
+        "funds and similar). They have no overseas investment limit, so their fund houses can "
+        "create units when demand rises and their premium stays close to zero. The line shows "
+        "the median premium of the controls on each day, as a reference for the tracked funds. "
+        "It is a comparison of two groups, not a forecast."
+    )
+    control_list = dd.control_symbols(master)
+    c_measures = {
+        k: v for k, v in dd.available_measures(etf_day).items() if k not in dd.LOG_MEASURES
+    }
+    if not control_list:
+        st.info("No domestic control ETFs are listed in the data (`group: control` in the config).")
+    elif not c_measures:
+        st.info("No premium columns in the data yet.")
+    else:
+        first_pref = dd.primary_premium_column(etf_day)
+        pref_index = list(c_measures).index(first_pref) if first_pref in c_measures else 0
+        c_left, c_mid, c_right = st.columns([2, 2, 1])
+        c_measure = c_left.selectbox(
+            "Measure", list(c_measures), index=pref_index, format_func=c_measures.get,
+            key="controls_measure",
+        )  # fmt: skip
+        c_syms = c_mid.multiselect("Tracked ETFs", symbols, default=symbols, key="controls_syms")
+        c_span = c_right.selectbox("Period", list(HISTORY_RANGES), index=1, key="controls_span")
+        c_start = None
+        if HISTORY_RANGES[c_span]:
+            c_start = latest_date - timedelta(days=HISTORY_RANGES[c_span])
+        comparison = dd.controls_comparison(etf_day, master, c_syms, c_measure, start=c_start)
+        if comparison.empty:
+            st.info("No values for this measure and period.")
+        else:
+            c_marks = dd.markers_in_range(
+                _markers(), comparison["date"].min(), comparison["date"].max()
+            )
+            st.plotly_chart(
+                charts.premium_figure(
+                    comparison, label=c_measures[c_measure], log_measure=False, markers=c_marks
+                ),
+                **_stretch(),
+            )
+            latest_c = dd.controls_latest(comparison)
+            if not latest_c.empty:
+                shown_c = latest_c.assign(
+                    value=latest_c["value"] * 100.0,
+                    control_median=latest_c["control_median"] * 100.0,
+                    gap=latest_c["gap"] * 100.0,
+                ).rename(
+                    columns={
+                        "symbol": "Symbol",
+                        "date": "Date",
+                        "value": "Premium (%)",
+                        "control_median": "Control median (%)",
+                        "gap": "Difference (points)",
+                    }
+                )
+                st.subheader("Latest value for each tracked ETF")
+                one = st.column_config.NumberColumn(format="%.1f")
+                st.dataframe(
+                    shown_c,
+                    hide_index=True,
+                    column_config={
+                        "Premium (%)": one,
+                        "Control median (%)": one,
+                        "Difference (points)": one,
+                    },
+                    **_stretch(),
+                )
+            n_with = int(
+                dd.premium_series(etf_day, control_list, c_measure, start=c_start)[
+                    "symbol"
+                ].nunique()
+            )
+            st.caption(
+                f"{len(control_list)} controls are listed; {n_with} have a value for this measure "
+                f"in this period: {', '.join(control_list)}."
+            )
 
 # ---- April 2027 countdown ---------------------------------------------------------------------
 with tab_april:
@@ -358,7 +478,12 @@ with tab_inav:
         "Each iNAV reading is paired with the nearest exchange price of the same ETF."
     )
     days = dd.snapshot_days(snaps)
-    if not days:
+    if is_snapshot:
+        st.info(
+            "Intraday iNAV readings are not part of the public snapshot (they are copied from "
+            "fund-house websites). They appear when the page runs on the project's own data."
+        )
+    elif not days:
         st.info(
             "No iNAV snapshots recorded yet. Start the recorder with `uv run etfp collect inav`."
         )
@@ -420,8 +545,10 @@ with tab_quality:
         "normal for daily sources."
     )
 
-    beat = read_heartbeat()
-    if beat is None:
+    beat = None if is_snapshot else read_heartbeat()
+    if is_snapshot:
+        st.caption("iNAV recorder: not part of the public snapshot.")
+    elif beat is None:
         st.caption("iNAV recorder: no heartbeat file yet.")
     else:
         st.caption(
@@ -457,7 +584,9 @@ value of what they hold. The gap is the **premium**.
 * **iNAV** is the fund house's intraday estimate of NAV.
 
 Limits: values come from public sources and a free futures feed; some days use the latest NAV
-without adjustment (`nav_only`). Check official NSE and AMFI data for anything that matters.
+without adjustment (`nav_only`, where fair value is just the latest known NAV). The domestic
+controls tab compares the tracked funds with ordinary India-equity ETFs that can still create
+units. Check official NSE and AMFI data for anything that matters.
 """
     )
     st.subheader("Price-band regimes")

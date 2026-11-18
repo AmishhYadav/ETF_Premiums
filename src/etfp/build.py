@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 
 from etfp import calendars, paths
-from etfp.clean import build_clean
+from etfp.clean import build_clean, symbol_changes
 from etfp.clean.common import list_raw_files, parse_file
 from etfp.clean.manual_fof import feeder_units_daily
 from etfp.collect import bloomberg, yahoo_intraday
@@ -1214,7 +1214,17 @@ def build_all(root: Path | None = None) -> dict[str, Any]:
     logger.info("limit_day: %d rows", n_ld)
     n_vm = store.write_table(valve.TABLE, build_valve_monthly(store, load_config(root)))
     logger.info("valve_monthly: %d rows", n_vm)
-    return {"clean": counts, "etf_day": n, "limit_day": n_ld, "valve_monthly": n_vm}
+    # D45: renames NSE lists that the config does not map (already logged as warnings).
+    unmapped = symbol_changes.warnings_in(store.read_table(symbol_changes.TABLE))
+    return {
+        "clean": counts,
+        "etf_day": n,
+        "limit_day": n_ld,
+        "valve_monthly": n_vm,
+        "symbol_change_warnings": [
+            f"{r.etf_symbol}: {r.detail}" for r in unmapped.itertuples(index=False)
+        ],
+    }
 
 
 __all__ = [

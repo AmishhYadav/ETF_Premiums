@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -133,8 +134,38 @@ def tracked_symbols(etf_day: pd.DataFrame | None, master: pd.DataFrame | None) -
     if master is not None and {"symbol", "tracked"} <= set(master.columns):
         flagged = master["tracked"].fillna(False).astype(bool)
         wanted = {str(s) for s in master.loc[flagged, "symbol"]}
-        return sorted(present & wanted)
+        return sorted((present & wanted) - set(control_symbols(master)))
     return sorted(present)
+
+
+CONTROL_GROUP = "control"
+"""``group_label`` of the domestic comparison ETFs (config/etfs.yaml ``group: control``)."""
+
+
+def control_symbols(master: pd.DataFrame | None) -> list[str]:
+    """Domestic control ETFs (``group_label == "control"``), sorted. They are a yardstick, never
+    listed as tracked funds even if a config row says ``tracked: true``."""
+    if master is None or not {"symbol", "group_label"} <= set(master.columns):
+        return []
+    mask = master["group_label"].astype("string").str.lower() == CONTROL_GROUP
+    return sorted(str(s) for s in master.loc[mask.fillna(False), "symbol"].dropna())
+
+
+PREMIUM_PREFERENCE = ("prem_fv", "prem_nav_known", "prem_raw")
+
+
+def primary_premium_column(etf_day: pd.DataFrame | None) -> str | None:
+    """The first of ``prem_fv``, ``prem_nav_known``, ``prem_raw`` that has any value.
+
+    The public snapshot has no fair value (it needs licensed futures and rupee data), so the
+    page falls back to the premium over the latest known NAV there.
+    """
+    if etf_day is None:
+        return None
+    for col in PREMIUM_PREFERENCE:
+        if col in etf_day.columns and pd.to_numeric(etf_day[col], errors="coerce").notna().any():
+            return col
+    return None
 
 
 def available_measures(etf_day: pd.DataFrame | None) -> dict[str, str]:
@@ -300,8 +331,13 @@ def latest_overview(
         if str(sym) in wanted
     ]
     out = pd.DataFrame(rows, columns=list(OVERVIEW_FIELDS))
+    sort_col = "prem_fv"
+    if out["prem_fv"].isna().all():  # no fair value in the data (public snapshot): use the NAV one
+        sort_col = next(
+            (c for c in ("prem_nav_known", "prem_raw") if out[c].notna().any()), "prem_fv"
+        )
     return out.sort_values(
-        "prem_fv", ascending=False, na_position="last", kind="stable"
+        sort_col, ascending=False, na_position="last", kind="stable"
     ).reset_index(drop=True)
 
 
@@ -754,3 +790,148 @@ def last_data_dates(tables: Tables, today: date) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows, columns=["source", "latest", "rows", "age_days"])
+
+
+# --------------------------------------------------------------------------
+# Fair-value note (what "fair value" means right now)
+# --------------------------------------------------------------------------
+def fair_value_note(overview: pd.DataFrame) -> str | None:
+    """Plain-words note when fair value is only the last known NAV (``fv_method == nav_only``).
+
+    ``None`` when there is no ``fv_method`` information (for example the public snapshot, which
+    has no fair value at all) or when every fund has a real market adjustment.
+    """
+    if overview is None or overview.empty or "fv_method" not in overview.columns:
+        return None
+    methods = overview["fv_method"].dropna().astype(str)
+    if methods.empty:
+        return None
+    n_nav_only = int((methods == "nav_only").sum())
+    if n_nav_only == 0:
+        return None
+    if n_nav_only == len(methods):
+        return (
+            "Right now fair value is simply the latest known NAV (fair value method `nav_only`): "
+            "the index-future and rupee adjustment has not been applied for any fund, so "
+            "premium over fair value equals premium over the latest known NAV. The two will "
+            "differ once the adjustment is switched on."
+        )
+    return (
+        f"For {n_nav_only} of {len(methods)} funds fair value is simply the latest known NAV "
+        "(method `nav_only`: no index-future and rupee adjustment was available); the others "
+        "have the adjustment."
+    )
+
+
+# --------------------------------------------------------------------------
+# Domestic controls: the yardstick for the tracked funds
+# --------------------------------------------------------------------------
+CONTROL_LABEL = "Domestic controls (median)"
+
+
+def controls_comparison(
+    etf_day: pd.DataFrame | None,
+    master: pd.DataFrame | None,
+    symbols: Sequence[str],
+    measure: str,
+    *,
+    start: date | None = None,
+) -> pd.DataFrame:
+    """Long table ``symbol, date, value``: each tracked ETF in ``symbols`` plus the median of the
+    domestic control ETFs on each date (symbol label ``CONTROL_LABEL``).
+
+    Domestic funds can create units whenever demand rises (no overseas cap), so their premium
+    stays close to zero; the median across them is a plain reference line. Descriptive only.
+    Dates where no control has a value have no control row.
+    """
+    base = premium_series(etf_day, list(symbols), measure, start=start)
+    controls = control_symbols(master)
+    ctl = premium_series(etf_day, controls, measure, start=start)
+    if ctl.empty:
+        return base
+    med = ctl.groupby("date", sort=True)["value"].median().reset_index()
+    med.insert(0, "symbol", CONTROL_LABEL)
+    return pd.concat([base, med], ignore_index=True)
+
+
+def controls_latest(comparison: pd.DataFrame) -> pd.DataFrame:
+    """Latest value of each series in ``comparison`` and its gap to the control median on the
+    same date (fraction points). Columns: Symbol, Date, Value, Control median, Gap."""
+    cols = ["symbol", "date", "value", "control_median", "gap"]
+    if comparison.empty:
+        return pd.DataFrame(columns=cols)
+    med = comparison[comparison["symbol"] == CONTROL_LABEL].set_index("date")["value"]
+    rows = []
+    for sym, g in comparison[comparison["symbol"] != CONTROL_LABEL].groupby("symbol", sort=True):
+        last = g.sort_values("date").iloc[-1]
+        ref = float(med.get(last["date"], np.nan))
+        rows.append(
+            {
+                "symbol": sym,
+                "date": last["date"],
+                "value": float(last["value"]),
+                "control_median": ref,
+                "gap": float(last["value"]) - ref,
+            }
+        )
+    return pd.DataFrame(rows, columns=cols)
+
+
+# --------------------------------------------------------------------------
+# Where the data comes from: data/clean (local) or a public snapshot folder (hosted)
+# --------------------------------------------------------------------------
+DATA_DIR_ENV = "ETFP_DASHBOARD_DATA"
+"""Folder written by ``etfp export dashboard``. When set, the page reads it instead of
+``data/clean``. A hosted copy of the page also finds ``dashboard_data/`` next to ``dashboard/``."""
+SNAPSHOT_MANIFEST = "manifest.json"
+SNAPSHOT_KIND = "dashboard_snapshot"
+
+
+class ParquetDirStore:
+    """Reads ``<name>.parquet`` files from a folder as they are (the snapshot has no DuckDB)."""
+
+    def __init__(self, folder: Path) -> None:
+        self.dir = Path(folder)
+
+    def has_table(self, table: str) -> bool:
+        return (self.dir / f"{table}.parquet").exists()
+
+    def read_table(self, name: str) -> pd.DataFrame:
+        return pd.read_parquet(self.dir / f"{name}.parquet")
+
+
+def snapshot_manifest(folder: Path) -> dict[str, Any] | None:
+    """The snapshot's ``manifest.json`` as a dict, or ``None`` if ``folder`` is not a snapshot."""
+    import json
+
+    path = Path(folder) / SNAPSHOT_MANIFEST
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("kind") == SNAPSHOT_KIND else None
+
+
+def resolve_data_dir(
+    default_clean: Path, repo_root: Path, env: dict[str, str] | None = None
+) -> tuple[Path, bool]:
+    """Pick the table folder: ``(folder, is_snapshot)``.
+
+    1. ``$ETFP_DASHBOARD_DATA`` if set (a snapshot folder).
+    2. ``default_clean`` (``data/clean``) if it holds ``etf_day.parquet``: the owner's own Mac.
+    3. ``<repo_root>/dashboard_data`` if it is a snapshot: a hosted copy.
+    4. Otherwise ``default_clean`` (the page then shows its "no data yet" hint).
+    """
+    import os
+
+    env = os.environ if env is None else env
+    chosen = (env.get(DATA_DIR_ENV) or "").strip()
+    if chosen:
+        folder = Path(chosen).expanduser()
+        return folder, snapshot_manifest(folder) is not None
+    if (Path(default_clean) / "etf_day.parquet").exists():
+        return Path(default_clean), False
+    hosted = Path(repo_root) / "dashboard_data"
+    if snapshot_manifest(hosted) is not None:
+        return hosted, True
+    return Path(default_clean), False

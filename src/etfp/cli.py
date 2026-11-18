@@ -576,6 +576,8 @@ def build(
     for table, rows in sorted(result["clean"].items()):
         typer.echo(f"clean  {table:<16} {rows:>9} rows")
     typer.echo(f"etf_day                 {result['etf_day']:>9} rows")
+    for line in result.get("symbol_change_warnings", []):
+        typer.echo(f"WARNING symbol change not in config/etfs.yaml: {line}", err=True)
     if not no_export:
         _export_research()
 
@@ -782,8 +784,12 @@ def _build_step() -> ops.StepReport:
     for table, rows in sorted(result["clean"].items()):
         typer.echo(f"clean  {table:<16} {rows:>9} rows")
     typer.echo(f"etf_day                 {result['etf_day']:>9} rows")
+    unmapped = result.get("symbol_change_warnings", [])
+    for line in unmapped:
+        typer.echo(f"WARNING symbol change not in config/etfs.yaml: {line}", err=True)
+    note = f"; {len(unmapped)} UNMAPPED symbol change(s), see log" if unmapped else ""
     return ops.StepReport(
-        "ok", f"etf_day {result['etf_day']} rows, {len(result['clean'])} clean tables"
+        "ok", f"etf_day {result['etf_day']} rows, {len(result['clean'])} clean tables{note}"
     )
 
 
@@ -919,6 +925,34 @@ def launchd_plist(
     typer.echo(text, nl=False)
     if job == "daily-evening":
         typer.echo(ops.MUHURAT_NOTE, err=True)  # stderr, so `> file.plist` stays clean
+
+
+@export_app.command("dashboard")
+def export_dashboard_cmd(
+    out: Annotated[
+        str | None,
+        typer.Option("--out", help="Folder to write. Default: exports/dashboard."),
+    ] = None,
+) -> None:
+    """Write a slim derived-only snapshot for a hosted dashboard (local only; never uploads).
+
+    Same licence rules as `export dataset` (config/dataset.yaml): no prices, NAVs, fair value,
+    official limits or anything from Bloomberg/Yahoo. Publishing the folder is Amish's decision
+    (docs/OPERATIONS.md, "Hosting the dashboard").
+    """
+    from pathlib import Path
+
+    from etfp.export_dashboard import export_dashboard
+    from etfp.export_dataset import DatasetLicenceError
+    from etfp.store import Store
+
+    _configure_logging()
+    try:
+        folder = export_dashboard(Store(), Path(out) if out else None)
+    except DatasetLicenceError as exc:
+        typer.echo(f"DASHBOARD EXPORT REFUSED: {exc}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"dashboard snapshot: {folder}")
 
 
 if __name__ == "__main__":

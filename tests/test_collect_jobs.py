@@ -46,6 +46,8 @@ class Server:
             return httpx.Response(200, content=b"<p>0 to 0 of 0 records</p>")
         if "sebirss.xml" in url:
             return httpx.Response(200, content=b'<?xml version="1.0"?><rss><channel/></rss>')
+        if "fbil.org.in" in url:  # FBIL reference rates: an empty list is a valid answer
+            return httpx.Response(200, content=b"[]")
         return httpx.Response(200, content=f"body of {url}\n".encode())  # files end with a newline
 
     def count(self, needle: str) -> int:
@@ -132,7 +134,7 @@ def test_amfi_windows_single_day_and_bad_size():
 # -- plan_daily -----------------------------------------------------------------------
 
 
-def test_plan_daily_on_the_day_itself_lists_all_sixteen_files():
+def test_plan_daily_on_the_day_itself_lists_all_eighteen_files():
     plan = jobs.plan_daily(DAY, jobs.DAILY_SOURCES, now=NOW)
     names = [(u.source, u.name) for u in plan.units]
     assert names == [
@@ -155,9 +157,23 @@ def test_plan_daily_on_the_day_itself_lists_all_sixteen_files():
         ("nse_circulars", "nse_circulars_20261102_20261109.json"),
         ("sebi_rss", "sebirss.xml"),
         ("ibja_rates", "ibjarates_home.html"),
+        # FBIL: the 31 calendar days ending on the day, one request (D43, D45)
+        ("fbil_refrates", "fbil_refrates_2026-10-10_2026-11-09.json"),
+        ("nse_symbolchange", "symbolchange.csv"),
     ]
     assert plan.notes == []
     assert all(u.day == DAY for u in plan.units)
+
+
+def test_plan_daily_fbil_is_one_31_day_request_for_any_day_symbolchange_only_today():
+    past = date(2026, 11, 6)
+    plan = jobs.plan_daily(past, [jobs.FBIL, jobs.SYMBOLCHANGE], now=NOW)
+    assert [(u.source, u.name, u.host) for u in plan.units] == [
+        ("fbil_refrates", "fbil_refrates_2026-10-07_2026-11-06.json", "fbil.org.in")
+    ]  # 31 calendar days ending on the run day, inclusive
+    assert "nse_symbolchange 2026-11-06: skipped" in plan.notes[0]
+    assert jobs.FBIL not in jobs.CATCH_UP_SOURCES and jobs.FBIL not in jobs.BACKFILL_SOURCES
+    assert jobs.SYMBOLCHANGE not in jobs.CATCH_UP_SOURCES
 
 
 def test_plan_daily_amfi_window_skips_the_holiday_when_looking_back():
@@ -251,10 +267,10 @@ def test_second_run_makes_zero_requests(tmp_path: Path, server: Server):
         first = jobs.run_units(plan.units, client, store)
         n = len(server.requests)
         second = jobs.run_units(plan.units, client, store)
-    assert jobs.summarize(first) == {"fetched": 17, "exists": 0, "unavailable": 0, "failed": 0}
-    assert jobs.summarize(second) == {"fetched": 0, "exists": 17, "unavailable": 0, "failed": 0}
-    # 17 files, 18 requests: NSE's circulars API needs one page visit first (cookies)
-    assert len(server.requests) == n == 18
+    assert jobs.summarize(first) == {"fetched": 19, "exists": 0, "unavailable": 0, "failed": 0}
+    assert jobs.summarize(second) == {"fetched": 0, "exists": 19, "unavailable": 0, "failed": 0}
+    # 19 files, 20 requests: NSE's circulars API needs one page visit first (cookies)
+    assert len(server.requests) == n == 20
 
 
 def test_force_refetches_but_identical_bytes_are_not_stored_twice(tmp_path: Path, server: Server):
@@ -462,7 +478,14 @@ def test_catch_up_plans_only_missing_files_of_the_previous_seven_days(tmp_path: 
     assert {"nse_bhavcopy_full", "nse_udiff_bhavcopy", "nse_security_master"} <= sources
     assert {"bse_bhavcopy", "amfi_nav_history", "nse_slb_eligible"} <= sources
     # snapshot-only files can never be caught up, so they are not planned
-    assert not sources & {"nse_etf_seclist", "amfi_navall", "ibja_rates", "sebi_rss"}
+    assert not sources & {
+        "nse_etf_seclist",
+        "amfi_navall",
+        "ibja_rates",
+        "sebi_rss",
+        "fbil_refrates",  # re-asks a 31-day window every run
+        "nse_symbolchange",
+    }
     assert any("catch-up: " in n and "2026-11-17" in n for n in plan.notes)
     # the AMFI window for the missed day is the same file the daily run would have saved
     amfi = next(u for u in plan.units if u.source == "amfi_nav_history")

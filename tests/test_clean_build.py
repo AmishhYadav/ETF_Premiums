@@ -23,6 +23,7 @@ BUILT = [t for t, _ in CLEANERS]
 MANUAL = {
     "events", "fof_monthly", "units_monthly", "trends_daily", "feeder_nav_daily",
     "china_etf_daily",
+    "symbol_changes",  # needs NSE's symbolchange.csv; its own tests: test_clean_symbol_changes.py
     "underlying_bar_values",  # free futures/FX bars: empty until a Yahoo download succeeds
 }  # fmt: skip
 
