@@ -39,7 +39,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R4 — Feeder-fund (fund of funds) table
 - Asked: 2026-11-10
 - Need: New table `fof_monthly`: fund of funds name, AMFI scheme code, month end, AUM, units of the underlying ETF held (from the AMC monthly portfolio), and subscription status (open / lump sum shut / SIP shut) with notice date. Feeder funds value the ETF at the exchange price and buy on the exchange, so their flows are price-insensitive demand.
-- Status: partly done (e898930, 2026-11-14): `fof_monthly` loader, validation, template, docs/manual_data.md. Data and AMFI confirmation of the feeder list still to enter
+- Status: partly done (e898930, 2026-11-14): `fof_monthly` loader, validation, template, docs/manual_data.md. Data and AMFI confirmation of the feeder list still to enter Update (d6ec33a, 2026-11-18): `fof_monthly` now fills automatically from the AMCs' monthly portfolio files (D46): 254 rows, feeder units of MON100 (from Nov 2020), MAFANG, MASPTOP50, MAHKTECH (from launch). `fof_net_flow` and `subscription_status` are not in those files and stay blank (typed rows in data/manual/fof_monthly.csv still win). One row per feeder on the Regular-plan code (both plans share one portfolio)
 - Notes: Manual CSV under data/manual/ is fine for v1. Feeders: Motilal Oswal Nasdaq 100 FoF; Mirae Asset NYSE FANG+ ETF FoF, S&P 500 Top 50 ETF FoF, Hang Seng TECH ETF FoF. Confirm the list from AMFI.
 
 ### R5 — Seed the events table
@@ -81,7 +81,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R11 — Units outstanding before the first security-master file
 - Asked: 2026-11-11
 - Need: Monthly `units` = AUM / NAV for each tracked ETF from Jan 2021 to the first available security-master date, from AMFI and fund-house monthly disclosures, in `units_monthly` with a `source` column. DECISIONS D4 found HTTP 404 for the file of 2 Jan 2024, so `IssdCptl` cannot date the Jan 2022 suspension or the Jun 2022 reopening.
-- Status: partly done (e898930, 2026-11-14): `units_monthly` loader + template. Security master starts 2024-02-05 (D22), so monthly data needed Jan 2021 to Feb 2024 — to enter by hand
+- Status: partly done (e898930, 2026-11-14): `units_monthly` loader + template. Security master starts 2024-02-05 (D22), so monthly data needed Jan 2021 to Feb 2024 — to enter by hand Update (d6ec33a, 2026-11-18): done from AMC monthly portfolios (D46): 377 rows `units = AUM / month-end NAV` for the six ETFs, Jan 2021 (or launch) to Oct 2026, `source` + `source_file`. Gaps: Motilal May-Jun 2026 files not listed; Nippon Jul 2021 and Jan 2022. Cross-check vs IssdCptl from Feb 2024: median 0.0%, gaps >1% are creation timing. **Answer:** MONQ50 units were 2,075,017 at end Dec 2021 (launch month), 3,275,015 by Feb 2022; the 3,275,018 of 1 Jul 2024 is not the launch figure but the Feb 2022 level, reached again Dec 2023-Jun 2024 after moves to 3.875M/4.475M. Every step is a multiple of 600,000
 - Notes: Needed for paper A. Manual CSV under data/manual/ is fine. Check whether MONQ50's 3,275,018 units (1 Jul 2024) equal its units at launch (Dec 2021).
 
 ### R12 — Beta-adjusted fair value
@@ -99,7 +99,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 ### R14 — Feeder holdings and net float
 - Asked: 2026-11-11
 - Need: Extend R4's `fof_monthly` with `etf_units_held` (from the feeder's monthly portfolio), `fof_net_flow` (AMFI monthly) and the feeder's daily NAV. Add `feeder_units` (sum over feeders, carried forward daily) and `float_net` = (`units_outstanding` - `feeder_units`) x `nav_known_at_close` to the ETF-day table.
-- Status: partly done (e160a80, 2026-11-14): `feeder_units`, `float_net` in etf_day; feeder daily NAV in `feeder_nav_daily` (config/feeders.yaml, 8 schemes verified in AMFI). Monthly feeder holdings still to enter by hand in data/manual/fof_monthly.csv
+- Status: partly done (e160a80, 2026-11-14): `feeder_units`, `float_net` in etf_day; feeder daily NAV in `feeder_nav_daily` (config/feeders.yaml, 8 schemes verified in AMFI). Monthly feeder holdings still to enter by hand in data/manual/fof_monthly.csv Update (d6ec33a, 2026-11-18): monthly feeder holdings now automatic (R4 update), so `feeder_units` and `float_net` are filled. Example: MAFANG feeders held 126,778,665 units on 31 Oct 2026, 51% of the 247,303,596 units outstanding on 16 Nov 2026
 - Notes: Research finding of 2026-11-11: Motilal Oswal Nasdaq 100 FoF stopped new SIPs on 2024-12-10 and paused existing SIPs from 2025-01-05, citing exhausted overseas limits (addendum dated 2024-12-24), which implies its inflows had been met by creations; Mirae's feeders take only SIPs registered before 2024-01-05. The Mirae FANG+ feeder (about Rs 3,085 crore at market price) may hold 43-50% of the ETF's units. Feeders are mainly a supply channel, not a demand channel; R4's rationale is corrected by this.
 
 ### R15 — Google Trends daily series
