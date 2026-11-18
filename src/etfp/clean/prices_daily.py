@@ -9,6 +9,9 @@ If only a UDiFF file exists for a day, its row is used on its own.
 A third, repair-only source is NSE's old-format bhavcopy (``nse_bhavcopy_legacy``,
 D54): its rows are used only for (symbol, date) pairs that neither of the other
 two files supplies (4 Nov 2021, where the full bhavcopy is a stale copy of 3 Nov).
+That file has no delivery columns, so for those rows ``deliv_qty`` / ``deliv_pct`` are filled
+from NSE's MTO file of the same date (``nse_mto``, D57) when it is saved, and the MTO path is
+appended to ``source_file`` (';'-separated) so the numbers stay traceable.
 
 Finance notes (plain words):
 * ``close`` is NOT the last trade. NSE's official close is the average price of
@@ -60,9 +63,11 @@ def build(ctx: CleanContext) -> pd.DataFrame:
 
     legacy = _read(ctx, nse_bhavcopy_legacy.SOURCE, symbols, _parse_legacy)
 
+    mto = _read_mto(ctx, symbols)
+
     log_gaps(TABLE, {*full["date"], *udiff["date"], *legacy["date"]})
     merged = _merge(full, udiff)
-    merged = _add_legacy(merged, legacy)
+    merged = _add_legacy(merged, legacy, mto)
     merged = _one_row_per_day(merged)
     merged = apply_corporate_actions(merged, table=TABLE)
     return merged[COLUMNS]
@@ -77,6 +82,10 @@ def _parse_full(rf: RawFile, content: bytes) -> pd.DataFrame:
 
 def _parse_legacy(rf: RawFile, content: bytes) -> pd.DataFrame:
     return nse_bhavcopy_legacy.parse(content, source_file=rf.relpath)
+
+
+def _parse_mto(rf: RawFile, content: bytes) -> pd.DataFrame:
+    return nse_bhavcopy_legacy.parse_mto(content, source_file=rf.relpath)
 
 
 def _parse_udiff(rf: RawFile, content: bytes) -> pd.DataFrame:
@@ -106,6 +115,23 @@ def _read(ctx: CleanContext, source: str, symbols: set[str], parser) -> pd.DataF
     if not frames:
         logger.info("%s: no raw files for %s", TABLE, source)
         return _empty(source)
+    return pd.concat(frames, ignore_index=True)
+
+
+def _read_mto(ctx: CleanContext, symbols: set[str]) -> pd.DataFrame:
+    """Delivery rows (MTO files) for our ETFs; empty frame if no MTO file was saved."""
+    frames = []
+    for rf in list_raw_files(ctx.raw_root, nse_bhavcopy_legacy.SOURCE_MTO):
+        frame = parse_file(TABLE, rf, lambda b, rf=rf: _parse_mto(rf, b))
+        _check_file_date(rf, frame)
+        frame = frame[frame["symbol"].isin(symbols)]
+        frames.append(
+            map_former_symbols(
+                frame, ctx.universe, date_col="date", table=TABLE, source_file=rf.relpath
+            )
+        )
+    if not frames:
+        return pd.DataFrame({c: [] for c in nse_bhavcopy_legacy.MTO_COLUMNS})
     return pd.concat(frames, ignore_index=True)
 
 
@@ -166,7 +192,32 @@ def _merge(full: pd.DataFrame, udiff: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([f, u.loc[only_udiff]]).reset_index()[COLUMNS]
 
 
-def _add_legacy(merged: pd.DataFrame, legacy: pd.DataFrame) -> pd.DataFrame:
+def _fill_delivery(shaped: pd.DataFrame, mto: pd.DataFrame) -> pd.DataFrame:
+    """Fill ``deliv_qty`` / ``deliv_pct`` of legacy rows from the MTO file of the same
+    (symbol, series, date). A row with no MTO match keeps empty delivery (never a guess).
+    The MTO path is appended to ``source_file`` for the rows that got figures."""
+    if mto.empty or shaped.empty:
+        return shaped
+    key = ["symbol", "series", "date"]
+    m = mto.set_index(key)
+    pos = m.index.get_indexer(pd.MultiIndex.from_frame(shaped[key]))
+    hit = pos >= 0
+    if not hit.any():
+        return shaped
+    out = shaped.copy()
+    got = m.iloc[pos[hit]]
+    rows = out.index[hit]
+    out.loc[rows, "deliv_qty"] = pd.array(got["deliv_qty"].to_numpy(), dtype="Int64")
+    out.loc[rows, "deliv_pct"] = got["deliv_pct"].to_numpy(dtype="float64")
+    out.loc[rows, "source_file"] = [
+        f"{a};{b}" for a, b in zip(out.loc[rows, "source_file"], got["source_file"], strict=True)
+    ]
+    return out
+
+
+def _add_legacy(
+    merged: pd.DataFrame, legacy: pd.DataFrame, mto: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """Add old-format bhavcopy rows for (symbol, date) pairs no other file supplies."""
     if legacy.empty:
         return merged
@@ -177,6 +228,8 @@ def _add_legacy(merged: pd.DataFrame, legacy: pd.DataFrame) -> pd.DataFrame:
     extra = shaped[keep]
     if extra.empty:
         return merged
+    if mto is not None:
+        extra = _fill_delivery(extra, mto)
     logger.info(
         "%s: %d row(s) taken from the old-format bhavcopy (%s) where no other file has the day",
         TABLE,

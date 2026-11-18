@@ -19,7 +19,7 @@ Format (one zip with one CSV)::
 ``TOTTRDVAL`` is in rupees (exact), unlike the full bhavcopy's lacs. There is no
 average price and no delivery data in this file; the delivery figures are in the
 separate MTO file (``archives/equities/mto/MTO_DDMMYYYY.DAT``), which we save raw
-(source ``nse_mto``) but do not parse yet.
+(source ``nse_mto``) and read with ``parse_mto`` (D57).
 
 ``parse()`` returns the same columns as ``nse_bhavcopy.parse`` so the cleaner can
 treat both alike (``vwap``, ``deliv_qty`` and ``deliv_pct`` are missing here).
@@ -198,3 +198,97 @@ def parse(content: bytes, *, source_file: str) -> pd.DataFrame:
         out["deliv_pct"].append(math.nan)
         out["source_file"].append(source_file)
     return nse_bhavcopy._frame(out)
+
+
+# -- MTO (security-wise delivery) file ------------------------------------------
+
+MTO_COLUMNS = ["symbol", "series", "date", "traded_qty", "deliv_qty", "deliv_pct", "source_file"]
+_MTO_TRADE_DATE = re.compile(r"Trade Date <(\d{1,2}-[A-Za-z]{3}-\d{4})>")
+
+
+def parse_mto(content: bytes, *, source_file: str) -> pd.DataFrame:
+    """Read NSE's MTO file: per security, how many traded units were actually delivered.
+
+    In plain words: on the exchange, most trades are squared off the same day and no shares
+    change hands. "Deliverable quantity" is the part that was really taken into a demat
+    account; "% deliverable" is that divided by the quantity traded (already in percent, so
+    89.98 means 89.98%). The full bhavcopy carries these as ``DELIV_QTY`` / ``DELIV_PER``;
+    the old-format bhavcopy has no delivery, so for 4 Nov 2021 they come from this file.
+
+    Layout (real file ``MTO_04112021.DAT``)::
+
+        Security Wise Delivery Position - Compulsory Rolling Settlement
+        10,MTO,04112021,300306690,0001854          <- record type 10: file date, total, row count
+        Trade Date <04-NOV-2021>,Settlement Type <N>
+        Record Type,Sr No,Name of Security,Quantity Traded,Deliverable Quantity(...),% of ...
+        20,1,20MICRONS,EQ,33522,25797,76.96          <- record type 20: one per security+series
+
+    Only record type 20 rows are data. The row count in the type-10 line must match, so a
+    truncated download fails loudly. Returns ``MTO_COLUMNS`` (``deliv_qty`` as Int64,
+    ``deliv_pct`` in percent; a ``-`` or empty cell is missing, never zero).
+    """
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{SOURCE_MTO}: file is not UTF-8 text ({exc.reason})") from exc
+
+    def fail(line: int, message: str) -> ValueError:
+        return ValueError(f"{SOURCE_MTO}: line {line}: {message}")
+
+    trade_day: date | None = None
+    expected: int | None = None
+    out: dict[str, list] = {c: [] for c in MTO_COLUMNS}
+    seen: set[tuple[str, str]] = set()
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        fields = [f.strip() for f in raw.split(",")]
+        if not any(fields):
+            continue
+        m = _MTO_TRADE_DATE.match(raw.strip())
+        if m is not None:
+            trade_day = _date(m.group(1), line_no)
+        elif fields[0] == "10":
+            if len(fields) < 5 or not _INTEGER.match(fields[4]):
+                raise fail(line_no, f"record type 10 line has no row count: {raw!r}")
+            expected = int(fields[4])
+        elif fields[0] == "20":
+            if len(fields) != 7:
+                raise fail(line_no, f"expected 7 fields but found {len(fields)}")
+            symbol, series = fields[2], fields[3]
+            if not symbol:
+                raise fail(line_no, "security name is empty")
+            if (symbol, series) in seen:
+                raise fail(line_no, f"{symbol} {series} appears twice")
+            seen.add((symbol, series))
+            out["symbol"].append(symbol)
+            out["series"].append(series or None)
+            out["traded_qty"].append(_int(fields[4], line_no, "Quantity Traded"))
+            out["deliv_qty"].append(_int(fields[5], line_no, "Deliverable Quantity"))
+            out["deliv_pct"].append(_float(fields[6], line_no, "% Deliverable"))
+    if trade_day is None:
+        raise ValueError(
+            f"{SOURCE_MTO}: no 'Trade Date <DD-MON-YYYY>' line; has the format changed?"
+        )
+    if expected is None:
+        raise ValueError(
+            f"{SOURCE_MTO}: no record type 10 line (row count); has the format changed?"
+        )
+    if len(seen) != expected:
+        raise ValueError(
+            f"{SOURCE_MTO}: the header says {expected} rows but {len(seen)} were read "
+            "(truncated download?)"
+        )
+    n = len(out["symbol"])
+    out["date"] = [trade_day] * n
+    out["source_file"] = [source_file] * n
+    return pd.DataFrame(
+        {
+            "symbol": pd.array(out["symbol"], dtype="string"),
+            "series": pd.array(out["series"], dtype="string"),
+            "date": pd.Series(out["date"], dtype=object),
+            "traded_qty": pd.array(out["traded_qty"], dtype="Int64"),
+            "deliv_qty": pd.array(out["deliv_qty"], dtype="Int64"),
+            "deliv_pct": pd.Series(out["deliv_pct"], dtype="float64"),
+            "source_file": pd.array(out["source_file"], dtype="string"),
+        },
+        columns=MTO_COLUMNS,
+    )

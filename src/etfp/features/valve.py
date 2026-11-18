@@ -100,6 +100,20 @@ Creation units: ``creation_units_net`` = ``units_change`` / creation-unit size (
 config/etfs.yaml). Empty where the size is unknown (MASPTOP50, MAFANG and the domestic
 funds at the time of writing); the status does not need it.
 
+Which basket size for a month (D57). A fund house can change its basket (HDFCNIFTY 4,000 ->
+20,000 units on 20 Aug 2025; NIFTY1 50,000 -> 12,500 on 6 Nov 2024; D54). Judging an old
+month in today's size would call a real creation "flat" (a 4,000-unit move is 0.2 of a
+20,000 basket) or a flat month a creation. So each month is judged in the size in force
+at the MONTH'S LAST DAY (``units.size_on_dates`` on ``config/etfs.yaml``
+``creation_unit_history``). Why the end: the month's ``units_end`` is what the size has to
+fit, and the change is read at the end of the month; in the one month where the size
+changes mid-month the choice is a convention and the month is the only one where
+``creation_units_net`` mixes two sizes, so read it with care (``all_changes_whole_cu``
+flags such a month when a daily change is not a whole number of the end-of-month basket).
+Before a fund's first documented step the size is unknown (empty), so the monthly rule
+falls back to +-1% as for any fund without a known basket. ``creation_unit_size`` in the
+table shows the size actually used for that row.
+
 Hand example (made-up numbers, basket 600,000): the last file of December reads 3,275,018
 and the four files of January read 3,275,018, 3,875,018, 3,875,018, 4,475,018. Then for
 January units_start = 3,275,018 (December's last file), two files show a rise, units_end =
@@ -110,12 +124,13 @@ Pure functions only; the build writes the table.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date
 
 import numpy as np
 import pandas as pd
 
+from etfp.features.units import size_on_dates
 from etfp.store import SCHEMAS, Column, TableSchema, register_schema
 
 TABLE = "valve_monthly"
@@ -189,7 +204,12 @@ def _schema() -> TableSchema:
             "NSE refresh batches (dates >= 10% of the funds' counts changed, D48) after "
             "units_start_date and up to units_end_date. 0 with a flat count -> unknown, not closed",
         ),
-        Column("creation_unit_size", "int", "Units per creation basket (config/etfs.yaml)"),
+        Column(
+            "creation_unit_size",
+            "int",
+            "Units per creation basket in force on the month's last day "
+            "(config/etfs.yaml creation_unit_history, D57); empty when unknown",
+        ),
         Column(
             "creation_units_net",
             "float",
@@ -306,10 +326,30 @@ def frozen_file_dates(
     return out
 
 
+def size_for_month(
+    symbol: str,
+    month: str,
+    sizes: Mapping[str, int | None],
+    histories: Mapping[str, Sequence[tuple[date, int]]] | None = None,
+) -> int | None:
+    """Creation-unit size in force on the last day of ``month`` (None where unknown).
+
+    Hand example (HDFCNIFTY, steps 4,000 from 2024-02-05 and 20,000 from 2025-08-20): 2025-07
+    -> 4,000; 2025-08 -> 20,000 (its last day, 31 Aug, is after the change); 2024-01 -> None
+    (before the first documented step). A fund with no history gets its single size."""
+    last_day = pd.Period(month, freq="M").end_time.normalize()
+    got = size_on_dates(pd.Series([last_day]), pd.Series([symbol]), sizes, histories).iloc[0]
+    return None if pd.isna(got) else int(got)
+
+
 def _daily_rows(
-    symbol: str, d: pd.DataFrame, size: int | None, refreshes: np.ndarray
+    symbol: str,
+    d: pd.DataFrame,
+    size_of: Callable[[str], int | None],
+    refreshes: np.ndarray,
 ) -> dict[str, dict[str, object]]:
     """Rows for every month that has daily files. ``d``: one symbol, valid units only.
+    ``size_of``: month -> basket size in force at the month's end (None if unknown).
     ``refreshes``: sorted refresh dates (numpy datetime64[D])."""
     d = d.sort_values("date", kind="stable").reset_index(drop=True)
     d["_m"] = [_month(x) for x in d["date"]]
@@ -318,6 +358,7 @@ def _daily_rows(
     files = list(d["source_file"])
     out: dict[str, dict[str, object]] = {}
     for month, idx in d.groupby("_m", sort=True).indices.items():
+        size = size_of(month)
         i0, i1 = int(idx[0]), int(idx[-1])
         base = i0 - 1 if i0 > 0 else i0  # previous file (last of an earlier month), if any
         diffs = np.diff(units[base : i1 + 1])  # change at each file vs the file before it
@@ -439,6 +480,7 @@ def valve_monthly(
     end_month: str | None = None,
     threshold: float = MONTHLY_THRESHOLD,
     refreshes: Iterable[date] | None = None,
+    histories: Mapping[str, Sequence[tuple[date, int]]] | None = None,
 ) -> pd.DataFrame:
     """The ``valve_monthly`` table (see the module docstring for the rule).
 
@@ -449,6 +491,9 @@ def valve_monthly(
     month from ``start_month`` to ``end_month``; months without data are ``unknown``.
     ``refreshes``: dates NSE refreshed the counts (default :func:`refresh_dates` of
     ``units_daily``, so pass the whole table, not one symbol).
+    ``sizes``: the current basket size per symbol; ``histories``: dated size steps for funds
+    whose basket changed (``units.creation_unit_histories``). Each month uses the size in
+    force on its last day (:func:`size_for_month`, D57).
     """
     ud = units_daily[["symbol", "date", "units_outstanding", "source_file"]].copy()
     ud["units_outstanding"] = pd.to_numeric(ud["units_outstanding"], errors="coerce")
@@ -474,10 +519,14 @@ def valve_monthly(
 
     rows = []
     for sym in symbols:
-        size = sizes.get(sym) or None
-        daily = _daily_rows(sym, ud[ud["symbol"] == sym], size, ref_arr) if len(ud) else {}
+
+        def size_of(m: str, sym: str = sym) -> int | None:
+            return size_for_month(sym, m, sizes, histories)
+
+        daily = _daily_rows(sym, ud[ud["symbol"] == sym], size_of, ref_arr) if len(ud) else {}
         monthly = {r["_m"]: r for _, r in um[um["symbol"] == sym].iterrows()}
         for m in months:
+            size = size_of(m)
             d_row = daily.get(m)
             # A daily month with nothing to judge by (frozen NSE file, or a single first file)
             # defers to the AMC month-end figures when they exist (D48: Feb 2024). So does the
@@ -658,6 +707,7 @@ __all__ = [
     "START_MONTH",
     "TABLE",
     "month_range",
+    "size_for_month",
     "valve_monthly",
     "valve_status_markdown",
 ]

@@ -198,7 +198,10 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "(D54): creation_units_change, creation_event and creation_multiple_ok use the "
             "creation-unit size in force on each date (config creation_unit_history): changed "
             "for HDFCNIFTY (4,000 before 2025-08-20) and NIFTY1 (50,000 before 2024-11-06) only. "
-            "valve_monthly still uses one size per fund (open item)."
+            "valve_monthly.parquet now judges each month in the size in force on its "
+            "last day (D57). VALUE CHANGE (D57): deliv_qty, deliv_pct and deliv_share are "
+            "now filled for the 2021-11-04 rows (from NSE's MTO file; they were empty), and "
+            "source_file of those rows lists both raw files separated by ';'."
         ),
     },
 ]

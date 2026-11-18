@@ -1237,7 +1237,11 @@ def build_valve_monthly(store: Store, cfg: BuildConfig) -> pd.DataFrame:
         navd = navd.fillna(text)
         um["nav_lag_days"] = (pd.to_datetime(um["month_end"]) - navd).dt.days
     frame = valve.valve_monthly(
-        ud, um, units.creation_unit_sizes(cfg.universe), [e.symbol for e in cfg.universe.etfs]
+        ud,
+        um,
+        units.creation_unit_sizes(cfg.universe),
+        [e.symbol for e in cfg.universe.etfs],
+        histories=units.creation_unit_histories(cfg.universe),
     )
     return coerce(frame, get_schema(valve.TABLE))
 

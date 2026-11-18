@@ -1,0 +1,11 @@
+Security Wise Delivery Position - Compulsory Rolling Settlement
+10,MTO,04112021,300306690,0000007
+Trade Date <04-NOV-2021>,Settlement Type <N>
+Record Type,Sr No,Name of Security,Quantity Traded,Deliverable Quantity(gross across client level),% of Deliverable Quantity to Traded Quantity
+20,1,20MICRONS,EQ,33522,25797,76.96
+20,2,21STCENMGM,EQ,2420,2420,100.00
+20,7,667GS2050,GS,111,111,100.00
+20,8,676GS2061,GS,9273,9173,98.92
+20,1074,MON100,EQ,527567,474709,89.98
+20,1152,NIFTYBEES,EQ,671760,490296,72.99
+20,559,GOLDBEES,EQ,3104231,2660529,85.71

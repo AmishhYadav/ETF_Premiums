@@ -23,6 +23,7 @@ def daily(rows: list[tuple[str, date, int]]) -> pd.DataFrame:
 
 
 EMPTY_MONTHLY = pd.DataFrame({"symbol": [], "month_end": [], "units": [], "source_file": []})
+EMPTY_DAILY = pd.DataFrame({"symbol": [], "date": [], "units_outstanding": [], "source_file": []})
 
 
 # Dates NSE refreshed the counts (in real data: any ETF's count changed that day). Includes
@@ -386,3 +387,115 @@ def test_frozen_trailing_stretch_flags_only_after_four_weeks() -> None:
     # 3 Feb is 21 d after the last batch (not yet), 11 Feb is 29 d (flagged).
     assert v.frozen_file_dates(frame) == {date(2025, 2, 11)}
     assert v.frozen_file_dates(frame.iloc[0:0]) == set()
+
+
+# -- basket size that changes over time (D57) ---------------------------------------------
+# HDFCNIFTY-like fund "HH": 4,000 units per basket from 2024-02-05, 20,000 from 2025-08-20.
+# NIFTY1-like fund "NN": 50,000 until 2024-11-05, 12,500 from 2024-11-06.
+HIST = {
+    "HH": [(date(2024, 2, 5), 4_000), (date(2025, 8, 20), 20_000)],
+    "NN": [(date(2024, 2, 5), 50_000), (date(2024, 11, 6), 12_500)],
+}
+CURRENT = {"HH": 20_000, "NN": 12_500}
+
+
+def test_size_for_month_uses_the_last_day_of_the_month() -> None:
+    f = v.size_for_month
+    assert f("HH", "2025-07", CURRENT, HIST) == 4_000
+    assert f("HH", "2025-08", CURRENT, HIST) == 20_000  # changes on the 20th; 31 Aug is after
+    assert f("HH", "2024-02", CURRENT, HIST) == 4_000  # 29 Feb is after the first step
+    assert f("HH", "2024-01", CURRENT, HIST) is None  # before the first documented step
+    assert f("NN", "2024-10", CURRENT, HIST) == 50_000
+    assert f("NN", "2024-11", CURRENT, HIST) == 12_500
+    assert f("ZZ", "2024-11", {"ZZ": 7}, HIST) == 7  # no history: the single size
+    assert f("ZZ", "2024-11", {"ZZ": None}, HIST) is None
+
+
+def month_end_units(symbol: str, pairs: list[tuple[date, int]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [{"symbol": symbol, "month_end": d, "units": u, "source_file": f"m/{d}.csv"}
+         for d, u in pairs]
+    )  # fmt: skip
+
+
+def test_monthly_rule_is_judged_in_the_basket_size_of_that_month() -> None:
+    # HH month-end units. A move of +4,000 is 1.0 basket while the basket is 4,000 (July) but
+    # only 0.2 of the 20,000 basket (Sep); +20,000 in Aug is 1.0 basket of the new size.
+    um = month_end_units(
+        "HH",
+        [
+            (date(2025, 6, 30), 1_000_000),
+            (date(2025, 7, 31), 1_004_000),
+            (date(2025, 8, 31), 1_024_000),
+            (date(2025, 9, 30), 1_028_000),
+        ],
+    )
+    out = v.valve_monthly(
+        EMPTY_DAILY, um, CURRENT, ["HH"], start_month="2025-06", end_month="2025-09",
+        histories=HIST,
+    )  # fmt: skip
+    t = out.set_index("month")
+    jul, aug, sep = t.loc["2025-07"], t.loc["2025-08"], t.loc["2025-09"]
+    assert (jul.valve_status, jul.creation_unit_size) == ("open", 4_000)
+    assert jul.creation_units_net == pytest.approx(1.0)  # 4,000 / 4,000
+    assert (aug.valve_status, aug.creation_unit_size) == ("open", 20_000)
+    assert aug.creation_units_net == pytest.approx(1.0)  # 20,000 / 20,000
+    assert (sep.valve_status, sep.status_rule) == ("closed", "monthly_flat")
+    assert sep.creation_units_net == pytest.approx(0.2)  # 4,000 / 20,000
+    # With one size for all months (the old behaviour) July would have been closed.
+    old = v.valve_monthly(
+        EMPTY_DAILY, um, CURRENT, ["HH"], start_month="2025-06", end_month="2025-09"
+    ).set_index("month")
+    assert old.loc["2025-07", "valve_status"] == "closed"
+
+
+def test_size_that_shrinks_and_the_unknown_size_before_the_first_step() -> None:
+    # NN: +12,500 in Oct 2024 is 0.25 of a 50,000 basket (closed) but +12,500 in Dec is one
+    # 12,500 basket (open). Jan 2024 predates the first step: size unknown, the 1% rule
+    # applies (+0.5% -> closed, +2% -> open).
+    um = month_end_units(
+        "NN",
+        [
+            (date(2023, 12, 31), 1_000_000),
+            (date(2024, 1, 31), 1_005_000),  # +0.5% -> closed, size None
+            (date(2024, 2, 29), 1_025_100),  # +20,100 on 1,005,000 = +2.0%, basket 50,000: closed
+            (date(2024, 9, 30), 1_025_100),
+            (date(2024, 10, 31), 1_037_600),  # +12,500
+            (date(2024, 11, 30), 1_037_600),
+            (date(2024, 12, 31), 1_050_100),  # +12,500
+        ],
+    )
+    out = v.valve_monthly(
+        EMPTY_DAILY, um, CURRENT, ["NN"], start_month="2024-01", end_month="2024-12",
+        histories=HIST,
+    )  # fmt: skip
+    t = out.set_index("month")
+    jan = t.loc["2024-01"]
+    assert pd.isna(jan.creation_unit_size) and jan.valve_status == "closed"
+    assert pd.isna(jan.creation_units_net)
+    assert t.loc["2024-10", "valve_status"] == "closed"  # 0.25 of a 50,000 basket
+    assert t.loc["2024-10", "creation_units_net"] == pytest.approx(0.25)
+    dec = t.loc["2024-12"]
+    assert (dec.valve_status, dec.creation_unit_size) == ("open", 12_500)
+    assert dec.creation_units_net == pytest.approx(1.0)
+
+
+def test_daily_months_use_the_size_in_force_too() -> None:
+    # HH daily: +20,000 on 6 Jan 2026 is one basket of 20,000; in 2025-07 +4,000 is one of 4,000.
+    d = daily(
+        [
+            ("HH", date(2025, 6, 30), 1_000_000),
+            ("HH", date(2025, 7, 7), 1_004_000),
+            ("HH", date(2025, 7, 31), 1_004_000),
+            ("HH", date(2026, 1, 5), 1_004_000),
+            ("HH", date(2026, 1, 6), 1_024_000),
+        ]
+    )
+    out = v.valve_monthly(
+        d, EMPTY_MONTHLY, CURRENT, ["HH"], start_month="2025-07", end_month="2026-01",
+        histories=HIST, refreshes=[date(2025, 7, 7), date(2026, 1, 6)],
+    ).set_index("month")  # fmt: skip
+    jul, jan = out.loc["2025-07"], out.loc["2026-01"]
+    assert jul.creation_unit_size == 4_000 and jul.creation_units_net == pytest.approx(1.0)
+    assert bool(jul.all_changes_whole_cu) is True
+    assert jan.creation_unit_size == 20_000 and jan.creation_units_net == pytest.approx(1.0)

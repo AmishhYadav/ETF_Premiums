@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx
+import pandas as pd
 import pytest
 
 from etfp.clean import make_context, prices_daily
@@ -123,3 +124,64 @@ def test_clean_uses_legacy_rows_only_where_the_day_is_otherwise_missing(
     other = df[(df["symbol"] == "NIFTYBEES") & (df["date"] == date(2021, 1, 4))].iloc[0]
     assert other["value_source"] == "bhavcopy"
     assert not df.duplicated(["symbol", "date"]).any()
+
+
+# -- MTO delivery file (D57) -----------------------------------------------------------
+# tests/fixtures/nse_mto/MTO_04112021.DAT is the real file cut down to 7 rows; only the row
+# count in the type-10 line (1854 -> 7) was changed so the completeness check still holds.
+MTO_RAW = fixture_bytes("nse_mto/MTO_04112021.DAT")
+
+
+def test_parse_mto_reads_the_real_rows() -> None:
+    df = legacy.parse_mto(MTO_RAW, source_file="nse_mto/2021-11-04/MTO_04112021.DAT")
+    assert len(df) == 7
+    m = df[df["symbol"] == "MON100"].iloc[0]
+    # Hand check: 474,709 delivered of 527,567 traded = 89.98% (D54 note)
+    assert m["date"] == DAY and m["series"] == "EQ"
+    assert (m["traded_qty"], m["deliv_qty"], m["deliv_pct"]) == (527_567, 474_709, 89.98)
+    assert round(474_709 / 527_567 * 100, 2) == 89.98
+    n = df[df["symbol"] == "NIFTYBEES"].iloc[0]
+    assert (n["deliv_qty"], n["deliv_pct"]) == (490_296, 72.99)
+    assert str(df["deliv_qty"].dtype) == "Int64"
+    assert m["source_file"] == "nse_mto/2021-11-04/MTO_04112021.DAT"
+
+
+def test_parse_mto_detects_truncation_and_missing_values() -> None:
+    text = MTO_RAW.decode()
+    lines = text.splitlines()
+    with pytest.raises(ValueError, match=r"nse_mto.*says 7 rows but 6"):
+        legacy.parse_mto("\n".join(lines[:-1]).encode(), source_file="x")
+    df = legacy.parse_mto(text.replace("2420,2420,100.00", "2420,-,-").encode(), source_file="x")
+    r = df[df["symbol"] == "21STCENMGM"].iloc[0]
+    assert r["deliv_qty"] is pd.NA and math.isnan(r["deliv_pct"])  # missing, not zero
+    short = text.replace("20,1,20MICRONS,EQ,", "20,1,20MICRONS,")
+    with pytest.raises(ValueError, match=r"nse_mto: line 5.*7 fields"):
+        legacy.parse_mto(short.encode(), source_file="x")
+
+
+def test_clean_fills_delivery_of_legacy_rows_from_mto(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = make_raw_root(tmp_path)
+    stale = "nse_bhavcopy_full/2021-11-04/sec_bhavdata_full_04112021.csv"
+    save_raw(
+        root, "nse_bhavcopy_full", DAY, "sec_bhavdata_full_04112021.csv",
+        fixture_bytes("nse_bhavcopy/sec_bhavdata_full_04012021.csv"),
+    )  # fmt: skip
+    save_raw(root, "nse_bhavcopy_legacy", DAY, "cm04NOV2021bhav.csv.zip", make_zip())
+    save_raw(root, "nse_mto", DAY, "MTO_04112021.DAT", MTO_RAW)
+    monkeypatch.setattr(prices_daily, "skipped_raw_files", lambda: {stale: "stale copy of 3 Nov"})
+    ctx = make_context(root)
+    ctx.master = build_master(ctx)
+    df = prices_daily.build(ctx)
+
+    on_day = df[df["date"] == DAY].set_index("symbol")
+    assert on_day.loc["MON100", "deliv_qty"] == 474_709
+    assert on_day.loc["MON100", "deliv_pct"] == 89.98
+    assert on_day.loc["NIFTYBEES", "deliv_qty"] == 490_296
+    assert on_day.loc["MON100", "source_file"] == (
+        "nse_bhavcopy_legacy/2021-11-04/cm04NOV2021bhav.csv.zip;nse_mto/2021-11-04/MTO_04112021.DAT"
+    )
+    # rows from the full bhavcopy keep their own delivery figures and plain source_file
+    other = df[(df["symbol"] == "NIFTYBEES") & (df["date"] == date(2021, 1, 4))].iloc[0]
+    assert other["value_source"] == "bhavcopy" and ";" not in other["source_file"]

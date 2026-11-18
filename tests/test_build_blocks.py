@@ -461,7 +461,7 @@ def test_valve_nav_lag_comes_from_nav_date_and_falls_back_to_the_text(
     store.write_table("units_monthly", um)
     seen = {}
 
-    def fake(ud, umonthly, sizes, symbols):
+    def fake(ud, umonthly, sizes, symbols, **kw):
         seen["lag"] = list(umonthly["nav_lag_days"])
         return pd.DataFrame(columns=valve.COLUMNS)
 
