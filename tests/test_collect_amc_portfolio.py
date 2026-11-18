@@ -323,3 +323,19 @@ def test_a_block_stops_the_run(tmp_path: Path) -> None:
     store = RawStore(tmp_path / "raw")
     with client_for(lambda r: httpx.Response(403)) as client, pytest.raises(SourceBlockedError):
         ap.download(client, store, DAY, [ref])
+
+
+def test_motilal_predicted_ref_for_unlisted_months() -> None:
+    # May 2026 and June 2026 workbooks were on the server but not in the search listing (D54)
+    from etfp.collect import amc_portfolio as ap
+
+    may = ap.motilal_predicted_ref(2026, 5)
+    assert may.url.endswith(
+        "/month-end-portfolio/2026/jun/Scheme%20Portfolio%20Detail%20May%202026.xlsx"
+    )
+    assert may.name == "2026-jun__Scheme_Portfolio_Detail_May_2026.xlsx"
+    assert (
+        ap.motilal_predicted_ref(2026, 6).name == "2026-jul__Scheme_Portfolio_Detail_June_2026.xlsx"
+    )
+    dec = ap.motilal_predicted_ref(2025, 12)  # December is published in January of the next year
+    assert "/2026/jan/Scheme%20Portfolio%20Detail%20December%202025.xlsx" in dec.url

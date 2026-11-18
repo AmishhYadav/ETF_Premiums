@@ -189,7 +189,11 @@ _SCHEMAS: tuple[TableSchema, ...] = (
             Column("settle_price", "float", "Settlement price (UDiFF only)"),
             Column("volume", "int", "Units traded"),
             Column("value", "float", "Traded value in rupees (exact from UDiFF, else lacs x 1e5)"),
-            Column("value_source", "string", "udiff (exact) or bhavcopy (rounded to Rs 1,000)"),
+            Column(
+                "value_source",
+                "string",
+                "udiff (exact), bhavcopy (rounded to Rs 1,000) or bhavcopy_legacy (old file)",
+            ),
             Column("trades", "int", "Number of trades"),
             Column("deliv_qty", "int", "Units taken as delivery (bhavcopy only)"),
             Column("deliv_pct", "float", "Delivered units as percent of units traded, 0-100"),

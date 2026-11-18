@@ -688,3 +688,34 @@ def fetch(
         skip_urls=already_fetched(store, SOURCES[amc]),
         on_outcome=on_outcome,
     )
+
+
+def motilal_predicted_ref(period_year: int, period_month: int) -> FileRef:
+    """The file name Motilal used for a month's "Scheme Portfolio Detail" workbook (D54).
+
+    The May and June 2026 workbooks are on Motilal's server but missing from its search
+    listing (D46 gap). They sit in the publication month's folder, named
+    ``Scheme Portfolio Detail <Month> <Year>.xlsx`` (checked 18 Nov 2026: HTTP 200 for May and
+    June 2026; the plural ``Details`` 404s). A guess can 404 for other months; the caller
+    treats that as "not found", not as an error in the data.
+    """
+    import calendar
+
+    pub_year, pub_month = (
+        (period_year, period_month + 1)
+        if period_month < 12
+        else (
+            period_year + 1,
+            1,
+        )
+    )
+    mon = calendar.month_abbr[pub_month].lower()
+    stem = f"Scheme Portfolio Detail {calendar.month_name[period_month]} {period_year}.xlsx"
+    return FileRef(
+        "motilal",
+        f"{MOTILAL_BASE}/content/dam/motilal-mf/downloads/mf/month-end-portfolio/"
+        f"{pub_year}/{mon}/{quote(stem)}",
+        _safe_name(f"{pub_year}-{mon}__{stem}"),
+        stem,
+        None,
+    )

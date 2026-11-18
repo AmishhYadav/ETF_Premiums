@@ -1064,7 +1064,9 @@ def build_etf_day(
     ud = tables["units_daily"]
     if len(ud):
         changes = units.units_changes(
-            ud[["symbol", "date", "units_outstanding", "source_file"]], sizes
+            ud[["symbol", "date", "units_outstanding", "source_file"]],
+            sizes,
+            histories=units.creation_unit_histories(cfg.universe),
         )
     else:
         changes = pd.DataFrame({c: [] for c in units.CHANGE_COLUMNS})
@@ -1145,6 +1147,7 @@ def build_unit_tables(store: Store, universe: EtfUniverse) -> tuple[pd.DataFrame
     changes = units.units_changes(
         ud[["symbol", "date", "units_outstanding", "source_file"]],
         units.creation_unit_sizes(universe),
+        histories=units.creation_unit_histories(universe),
     )
     return changes, units.unit_change_events(changes)
 

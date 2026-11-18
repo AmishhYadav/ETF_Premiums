@@ -6,6 +6,9 @@ From the newer UDiFF bhavcopy (DECISIONS D2, mid-2024 onwards) we merge in what
 the full bhavcopy lacks: the ISIN, the settlement price and the exact rupee
 value traded (the full bhavcopy rounds value to 0.01 lac = Rs 1,000).
 If only a UDiFF file exists for a day, its row is used on its own.
+A third, repair-only source is NSE's old-format bhavcopy (``nse_bhavcopy_legacy``,
+D54): its rows are used only for (symbol, date) pairs that neither of the other
+two files supplies (4 Nov 2021, where the full bhavcopy is a stale copy of 3 Nov).
 
 Finance notes (plain words):
 * ``close`` is NOT the last trade. NSE's official close is the average price of
@@ -34,7 +37,7 @@ from etfp.clean.common import (
     parse_file,
     skipped_raw_files,
 )
-from etfp.collect import nse_bhavcopy, nse_udiff
+from etfp.collect import nse_bhavcopy, nse_bhavcopy_legacy, nse_udiff
 
 logger = logging.getLogger("etfp.clean")
 
@@ -55,8 +58,11 @@ def build(ctx: CleanContext) -> pd.DataFrame:
     full = _read(ctx, nse_bhavcopy.SOURCE, symbols, _parse_full)
     udiff = _read(ctx, nse_udiff.SOURCE, symbols, _parse_udiff)
 
-    log_gaps(TABLE, {*full["date"], *udiff["date"]})
+    legacy = _read(ctx, nse_bhavcopy_legacy.SOURCE, symbols, _parse_legacy)
+
+    log_gaps(TABLE, {*full["date"], *udiff["date"], *legacy["date"]})
     merged = _merge(full, udiff)
+    merged = _add_legacy(merged, legacy)
     merged = _one_row_per_day(merged)
     merged = apply_corporate_actions(merged, table=TABLE)
     return merged[COLUMNS]
@@ -67,6 +73,10 @@ def build(ctx: CleanContext) -> pd.DataFrame:
 
 def _parse_full(rf: RawFile, content: bytes) -> pd.DataFrame:
     return nse_bhavcopy.parse(content, source_file=rf.relpath)
+
+
+def _parse_legacy(rf: RawFile, content: bytes) -> pd.DataFrame:
+    return nse_bhavcopy_legacy.parse(content, source_file=rf.relpath)
 
 
 def _parse_udiff(rf: RawFile, content: bytes) -> pd.DataFrame:
@@ -110,9 +120,7 @@ def _check_file_date(rf: RawFile, frame: pd.DataFrame) -> None:
 
 
 def _empty(source: str) -> pd.DataFrame:
-    cols = (
-        nse_bhavcopy.OUTPUT_COLUMNS if source == nse_bhavcopy.SOURCE else nse_udiff.OUTPUT_COLUMNS
-    )
+    cols = nse_udiff.OUTPUT_COLUMNS if source == nse_udiff.SOURCE else nse_bhavcopy.OUTPUT_COLUMNS
     return pd.DataFrame({c: [] for c in cols})
 
 
@@ -156,6 +164,26 @@ def _merge(full: pd.DataFrame, udiff: pd.DataFrame) -> pd.DataFrame:
         f.loc[common, col] = u.loc[common, col]
     only_udiff = u.index.difference(f.index)
     return pd.concat([f, u.loc[only_udiff]]).reset_index()[COLUMNS]
+
+
+def _add_legacy(merged: pd.DataFrame, legacy: pd.DataFrame) -> pd.DataFrame:
+    """Add old-format bhavcopy rows for (symbol, date) pairs no other file supplies."""
+    if legacy.empty:
+        return merged
+    shaped = _shape_full(legacy)
+    shaped["value_source"] = pd.array(["bhavcopy_legacy"] * len(shaped), dtype="string")
+    have = set(zip(merged["symbol"], merged["date"], strict=True))
+    keep = [(s, d) not in have for s, d in zip(shaped["symbol"], shaped["date"], strict=True)]
+    extra = shaped[keep]
+    if extra.empty:
+        return merged
+    logger.info(
+        "%s: %d row(s) taken from the old-format bhavcopy (%s) where no other file has the day",
+        TABLE,
+        len(extra),
+        ", ".join(sorted({d.isoformat() for d in extra["date"]})),
+    )
+    return pd.concat([merged, extra], ignore_index=True)[COLUMNS]
 
 
 def _warn_if_different(f: pd.DataFrame, u: pd.DataFrame) -> None:

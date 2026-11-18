@@ -10,7 +10,11 @@
 #   tracked       true = gets fair value, iNAV snapshots and a dashboard row.
 #   futures_proxy index future used for the fair-value calculation
 #                 (NQ = E-mini Nasdaq-100, ES = E-mini S&P 500, a proxy per SPEC 6.2).
-#   creation_unit_size  units in one creation/redemption basket.
+#   creation_unit_size  units in one creation/redemption basket (the CURRENT size).
+#   creation_unit_history  optional dated steps [{size, from, source}], oldest first; the
+#                 last step must equal creation_unit_size. The size in force on a date is
+#                 the last step with from <= date (features/units.py); before the first
+#                 step the size is unknown. Used for HDFCNIFTY and NIFTY1 (D54).
 #   verify        names of fields not yet confirmed against a primary source.
 #   former_symbols  earlier NSE trading symbols of the fund (NSE renames tickers, e.g.
 #                 SETFNIF50 -> SBINIFTY50 on 30 Oct 2026). Rows of the old symbol dated on or
@@ -465,9 +469,12 @@ etfs:
     tracked: false
     futures_proxy: null
     creation_unit_size: 20000
+    creation_unit_history:
+      - {size: 4000, from: 2024-02-05, source: "INFERRED, not documented: every units change 5 Feb 2024 - 19 Aug 2025 (59 of 59) is a whole multiple of 4,000 and the largest common divisor is 4,000, but 7 are not multiples of 20,000 (D50, D54). The true size could be a multiple of 4,000. 2024-02-05 = first NSE units file, not the date the size began."}
+      - {size: 20000, from: 2025-08-20, source: "HDFC Fund Facts Jun 2026 p.1: 20,000 (w.e.f. August 20, 2025) Units (D50)"}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2015-12-16. Avg traded value Jun-Oct 2026 Rs 7.71 cr/day. 10:1 unit split, price ex-date 2021-02-17 (config/corporate_actions.yaml). Creation unit 20,000 w.e.f. 20 Aug 2025 (HDFC Fund Facts Jun 2026 p.1); earlier size not documented, units data before then are whole multiples of 4,000 (D50)."
-    verify: [bloomberg]
+    notes: "Domestic control (R20). Listed 2015-12-16. Avg traded value Jun-Oct 2026 Rs 7.71 cr/day. 10:1 unit split, price ex-date 2021-02-17 (config/corporate_actions.yaml). Creation unit 20,000 w.e.f. 20 Aug 2025 (HDFC Fund Facts Jun 2026 p.1); before that 4,000 is inferred from the units data, not documented (D50, D54)."
+    verify: [bloomberg, creation_unit_history]
     former_symbols:
       - symbol: HDFCNIFETF
         until: 2023-06-15
@@ -528,9 +535,12 @@ etfs:
     tracked: false
     futures_proxy: null
     creation_unit_size: 12500
+    creation_unit_history:
+      - {size: 50000, from: 2024-02-05, source: "Kotak ETF page read 18 Nov 2026 (beforeUnit 50000) and units data: every change 5 Feb - 28 Oct 2024 is a whole multiple of 50,000. 2024-02-05 = first NSE units file (D54)."}
+      - {size: 12500, from: 2024-11-06, source: "Kotak ETF page (afterUnit 12500, thresholdDate 06/11/2026). The page's YEAR looks wrong: the units data change basket between 28 Oct and 13 Nov 2024 (13 Nov 2024 +2,575,000 = 206 x 12,500, not a multiple of 50,000), so 6 Nov 2024 is used; any date in that window gives the same rows (D54)."}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2010-02-11. Avg traded value Jun-Oct 2026 Rs 4.88 cr/day. Creation unit 12,500 (Kotak ETF page read 18 Nov 2026; the page says it was 50,000 before 6 Nov 2026 but the units data are whole multiples of 12,500 throughout; D50)."
-    verify: [bloomberg]
+    notes: "Domestic control (R20). Listed 2010-02-11. Avg traded value Jun-Oct 2026 Rs 4.88 cr/day. Creation unit 12,500 since 6 Nov 2024 (Kotak ETF page read 18 Nov 2026), 50,000 before (same page; consistent with the units data; the page prints 2026 as the year of the change, the data say 2024; D50, D54)."
+    verify: [bloomberg, creation_unit_history]
     former_symbols:
       - symbol: KOTAKNIFTY
         until: 2024-03-19

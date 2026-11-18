@@ -49,7 +49,7 @@ from etfp.timeutil import IST, now_ist
 
 logger = logging.getLogger("etfp.export")
 
-SCHEMA_VERSION = "1.7.0"
+SCHEMA_VERSION = "1.8.0"
 SCHEMA_CHANGELOG: list[dict[str, str]] = [
     {
         "version": "1.0.0",
@@ -180,6 +180,25 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "values when a month-end NAV is older than the month-end; refresh dates need 10% "
             "of funds to change (Feb 2024 was wrongly closed for every fund). 10 domestic "
             "controls now have creation_unit_size (D50), so their creation_units_change is filled."
+        ),
+    },
+    {
+        "version": "1.8.0",
+        "date": "2026-11-18",
+        "changes": (
+            "No column changes meaning. New file symbol_changes.parquet (D45, D55): NSE ticker "
+            "renames that touch a configured ETF, with the check against config former_symbols "
+            "(consistent / before_data_window / unconfigured). Every column of every file now "
+            "has units and a formula entry in schema.json (blank hand-written units are "
+            "filled from type and name rules; a blank formula reads 'see definition'). "
+            "manifest.json gains open_verify_state_counts. MORE ROWS (D54): the 2021-11-04 "
+            "Muhurat session now comes from NSE's old-format bhavcopy (the full bhavcopy of "
+            "that date holds 3 Nov data); those rows have value_source bhavcopy_legacy. "
+            "units_monthly/fof_monthly gain May and Jun 2026 for Motilal funds. VALUE CHANGE "
+            "(D54): creation_units_change, creation_event and creation_multiple_ok use the "
+            "creation-unit size in force on each date (config creation_unit_history): changed "
+            "for HDFCNIFTY (4,000 before 2025-08-20) and NIFTY1 (50,000 before 2024-11-06) only. "
+            "valve_monthly still uses one size per fund (open item)."
         ),
     },
 ]
@@ -406,7 +425,13 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
         "fv_in_fx_t / fv_in_fx_a",
         _FV_SRC,
     ),
-    "fv_in_nav_a": _c("float", "NAV used (echo of nav_known_at_close).", "rupees per unit", "", ""),
+    "fv_in_nav_a": _c(
+        "float",
+        "NAV used (echo of nav_known_at_close).",
+        "rupees per unit",
+        "= nav_known_at_close",
+        _FV_SRC,
+    ),
     "fv_in_futures_t": _c(
         "float",
         "Index future at 15:30 IST on t.",
@@ -1066,6 +1091,7 @@ COPIED_TABLES = (
     "notices",
     "bullion_ref_daily",
     "fx_ref_daily",
+    "symbol_changes",
 )
 """Clean tables copied as they are (their parquet files already have the registered types)."""
 MARKET_HOURS = (time(9, 10), time(15, 35))
@@ -1128,6 +1154,20 @@ def parse_open_verify_items(decisions_path: Path) -> list[dict[str, str]]:
     return items
 
 
+def verify_state_counts(items: list[dict[str, str]]) -> dict[str, int]:
+    """Count VERIFY rows by the first word of their status (OPEN, PARTLY, RESOLVED, ...).
+
+    The table is a running list that keeps RESOLVED rows for the record, so the number of rows
+    is not the number of unsettled items; this count says how many are.
+    """
+    counts: dict[str, int] = {}
+    for it in items:
+        m = re.match(r"[A-Za-z]+", it["status"].strip())
+        word = m.group(0).upper() if m else "UNSTATED"
+        counts[word] = counts.get(word, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as fh:
@@ -1152,8 +1192,107 @@ def _infer_type(series: pd.Series) -> str:
     return "string"
 
 
+_DTYPE_UNITS = {
+    "string": "text",
+    "date": "ISO date (YYYY-MM-DD)",
+    "timestamp": "timestamp, timezone-aware (zone stored with the value)",
+    "bool": "flag (true/false)",
+}
+_RUPEES_PER_UNIT = [
+    "last_price",
+    "inav",
+    "prev_nav",
+    "bid",
+    "ask",
+    "open",
+    "high",
+    "low",
+    "close",
+    "last",
+    "prev_close",
+    "nav",
+    "fee_prev_close",
+    "fee_open",
+    "fee_high",
+    "fee_low",
+    "fee_close",
+    "limit_end_up",
+    "limit_end_down",
+]
+_UNITS_BY_NAME = {
+    **dict.fromkeys(_RUPEES_PER_UNIT, "rupees per unit"),
+    "price_inr_per_gram": "rupees per gram",
+    "quote_inr": "rupees, as IBJA prints it",
+    "rate": "rupees per 1 unit of foreign currency",
+    "rate_quoted": "rupees per quote_units of foreign currency",
+    "quote_units": "units of foreign currency",
+    "value": "rupees",
+    "aum": "rupees",
+    "fof_net_flow": "rupees",
+    "shares_outstanding": "as Bloomberg EQY_SH_OUT returns it (unit VERIFY)",
+    "units_change_pct": "fraction",
+    "premium": "fraction",
+    "creation_units_change": "creation units",
+    "creation_units_net": "creation units",
+    "value_window": "index 0-100",
+    "window_value": "index 0-100",
+    "sample_interval_min": "minutes",
+    "days_since_prev": "calendar days",
+    "scrip_code": "identifier (BSE code)",
+    "amfi_scheme_code": "identifier (AMFI code)",
+    "scheme_code": "identifier (AMFI code)",
+}
+_UNIT_COUNT_NAMES = [
+    "volume",
+    "etf_units_held",
+    "units",
+    "units_start",
+    "units_end",
+    "units_change",
+    "units_outstanding",
+    "units_prev",
+    "units_new",
+    "creation_unit_size",
+]
+
+
+def _units_fallback(table: str, name: str, dtype: str) -> str:
+    """Units for a column whose hand-written doc has none (never guessed beyond these rules)."""
+    if table == "china_etf_daily" and name in {"close", "nav"}:
+        return "yuan per unit"
+    if table == "trends_daily" and name == "value":
+        return "index 0-100"
+    if table == "slb_daily" and name == "value":
+        return "rupees"
+    if name in _UNITS_BY_NAME:
+        return _UNITS_BY_NAME[name]
+    if name in _UNIT_COUNT_NAMES or "_qty" in name:
+        return "units (ETF units)"
+    if name in {"trades", "series_count", "n_source_files"} or name.startswith(
+        ("n_", "widenings_", "locked_n_obs_")
+    ):
+        return "count"
+    if name.startswith("minutes_at_limit"):
+        return "minutes"
+    return _DTYPE_UNITS.get(dtype, "")
+
+
 def _rows(table: str, df: pd.DataFrame) -> list[dict[str, str]]:
-    """Column documentation rows for one exported table."""
+    """Column documentation rows for one exported table; every field filled.
+
+    Units come from the hand-written doc or, if blank, from ``_units_fallback`` (type and
+    column-name rules). A blank formula becomes "see definition" (the definition says how
+    the column is built, or that it is stored as published).
+    """
+    rows = _rows_raw(table, df)
+    for r in rows:
+        r["units"] = r["units"] or _units_fallback(table, r["name"], r["type"])
+        r["formula"] = r["formula"] or "see definition"
+        r["source"] = r["source"] or "clean table; see source_file"
+    return rows
+
+
+def _rows_raw(table: str, df: pd.DataFrame) -> list[dict[str, str]]:
     if table == "etf_day":
         return [
             {
@@ -1540,7 +1679,8 @@ def _manifest(
         "limit_day": _limit_day_coverage(frames.get("limit_day")),
         "valve_status_counts_by_symbol": _valve_counts(frames.get("valve_monthly")),
         "creation_unit_sizes_missing": units.missing_creation_unit_sizes(needed, sizes),
-        "open_verify_items": parse_open_verify_items(decisions_path),
+        "open_verify_items": (verify_items := parse_open_verify_items(decisions_path)),
+        "open_verify_state_counts": verify_state_counts(verify_items),
         "symbol_change_warnings": _symbol_change_warnings(store),
         "files": files,
     }

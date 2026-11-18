@@ -13,8 +13,10 @@ skip:
       NSE's archive file for the 4 Nov 2021 Diwali Muhurat session is a
       byte-for-byte copy of the 3 Nov 2021 file (DATE1 = 03-Nov-2021). The
       session did happen: the 8 Nov 2021 file gives MON100 PREV_CLOSE 120.09,
-      not the 3 Nov close 117.54. True Muhurat prices for 2021 are not in this
-      archive (DECISIONS D32).
+      not the 3 Nov close 117.54. The real session is in NSE's old-format
+      bhavcopy, saved as nse_bhavcopy_legacy/2021-11-04/cm04NOV2021bhav.csv.zip
+      (TIMESTAMP 04-NOV-2021, MON100 PREVCLOSE 117.57, CLOSE 120.09); prices_daily
+      takes that day from it (value_source bhavcopy_legacy; DECISIONS D54, D32).
   - path: nse_slb_eligible/2021-09-16/SLB_ELG_SEC_16092021.csv
     reason: >-
       NSE's archive serves this eligible list cut off mid-line: 290,816 bytes

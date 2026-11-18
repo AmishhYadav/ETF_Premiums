@@ -183,3 +183,87 @@ def test_aum_crosscheck() -> None:
     assert (
         sep.rel_diff == pytest.approx(0.10, abs=1e-9) and bool(sep.flag_units_aum_mismatch) is True
     )
+
+
+# -- dated creation-unit history (D54) ---------------------------------------------------
+
+HDFC_STEPS = [(date(2024, 2, 5), 4_000), (date(2025, 8, 20), 20_000)]
+
+
+def test_size_in_force_on_each_date() -> None:
+    dates = pd.Series([date(2024, 2, 4), date(2024, 2, 5), date(2025, 8, 19), date(2025, 8, 20)])
+    sym = pd.Series(["HDFCNIFTY"] * 4)
+    out = u.size_on_dates(dates, sym, {"HDFCNIFTY": 20_000}, {"HDFCNIFTY": HDFC_STEPS})
+    assert pd.isna(out.iloc[0])  # before the first step: size unknown, not guessed
+    assert out.tolist()[1:] == [4_000.0, 4_000.0, 20_000.0]
+
+
+def test_symbol_without_history_uses_the_single_size_everywhere() -> None:
+    dates = pd.Series([date(2024, 2, 5), date(2026, 1, 1), date(2026, 1, 1)])
+    sym = pd.Series(["MONQ50", "MONQ50", "OTHER"])
+    out = u.size_on_dates(dates, sym, {"MONQ50": 600_000, "OTHER": None}, {"X": HDFC_STEPS})
+    assert out.iloc[:2].tolist() == [600_000.0, 600_000.0]
+    assert pd.isna(out.iloc[2])
+
+
+def test_hdfcnifty_changes_use_the_size_in_force() -> None:
+    # Hand-computed. 10 Feb 2025 -> 24 Feb 2025: +36,000 units = 9 baskets of 4,000 (NOT 1.8
+    # baskets of 20,000). 21 Aug 2025: +320,000 units = 16 baskets of 20,000.
+    # 22 Aug 2025: -40,000 = -2 baskets of 20,000. A flat row is not an event.
+    frame = pd.DataFrame(
+        {
+            "symbol": "HDFCNIFTY",
+            "date": [date(2025, 2, 10), date(2025, 2, 24), date(2025, 8, 14), date(2025, 8, 21),
+                     date(2025, 8, 22), date(2025, 8, 25)],
+            "units_outstanding": [1_000_000, 1_036_000, 1_036_000, 1_356_000, 1_316_000, 1_316_000],
+            "source_file": "f",
+        }
+    )  # fmt: skip
+    ch = u.units_changes(frame, {"HDFCNIFTY": 20_000}, histories={"HDFCNIFTY": HDFC_STEPS})
+    assert ch.creation_unit_size.tolist() == [4_000, 4_000, 4_000, 20_000, 20_000, 20_000]
+    assert ch.creation_units_change.iloc[1] == 9.0
+    assert ch.creation_units_change.iloc[3] == 16.0
+    assert ch.creation_units_change.iloc[4] == -2.0
+    assert ch.creation_multiple_ok.iloc[1] and ch.creation_multiple_ok.iloc[3]
+    # Without the history the same rows would be 1.8 baskets, flagged not a whole multiple
+    old = u.units_changes(frame, {"HDFCNIFTY": 20_000})
+    assert old.creation_units_change.iloc[1] == pytest.approx(1.8)
+    assert not old.creation_multiple_ok.iloc[1]
+    ev = u.unit_change_events(ch)
+    assert ev.creation_units_change.tolist() == [9.0, 16.0, -2.0]
+
+
+def test_rows_before_the_first_step_have_no_size() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": "HDFCNIFTY",
+            "date": [date(2024, 1, 2), date(2024, 1, 3)],
+            "units_outstanding": [1_000_000, 1_004_000],
+            "source_file": "f",
+        }
+    )
+    ch = u.units_changes(frame, {"HDFCNIFTY": 20_000}, histories={"HDFCNIFTY": HDFC_STEPS})
+    assert ch.creation_units_change.isna().all() and ch.creation_multiple_ok.isna().all()
+    assert ch.units_change.iloc[1] == 4_000
+
+
+def test_real_config_histories_are_ordered_and_end_at_current_size() -> None:
+    universe = load_etfs()
+    hist = u.creation_unit_histories(universe)
+    assert set(hist) == {"HDFCNIFTY", "NIFTY1"}
+    sizes = u.creation_unit_sizes(universe)
+    for sym, steps in hist.items():
+        assert [d for d, _ in steps] == sorted(d for d, _ in steps)
+        assert steps[-1][1] == sizes[sym]
+    assert hist["HDFCNIFTY"][-1] == (date(2025, 8, 20), 20_000)
+    # NIFTY1: 13 Nov 2024 +2,575,000 units is 206 baskets of 12,500 (and 51.5 of 50,000)
+    nifty1 = pd.DataFrame(
+        {
+            "symbol": "NIFTY1",
+            "date": [date(2024, 10, 28), date(2024, 11, 13)],
+            "units_outstanding": [94_389_630, 96_964_630],
+            "source_file": "f",
+        }
+    )
+    ch = u.units_changes(nifty1, sizes, histories=hist)
+    assert ch.creation_units_change.iloc[1] == 206.0 and ch.creation_multiple_ok.iloc[1]

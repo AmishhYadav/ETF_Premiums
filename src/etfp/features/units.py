@@ -17,7 +17,12 @@ Definitions (R1)
 ``creation_units_change``  ``units_change`` / creation-unit size (positive = creation,
                            negative = redemption). NaN when the size is not in
                            ``config/etfs.yaml`` (use :func:`missing_creation_unit_sizes`
-                           to list the gaps).
+                           to list the gaps). The size is the one in force on the row's
+                           ``date`` (the later observation) when the fund has a
+                           ``creation_unit_history`` (HDFCNIFTY: 4,000 units until
+                           19 Aug 2025, 20,000 from 20 Aug 2025); a change observed on or
+                           after a step date uses the new size, even if part of it was
+                           created before. Without a history, one size for all dates.
 ``creation_multiple_ok``   True when the change is a whole number of creation units
                            (to 1e-9). False flags a data problem or a corporate
                            action (a unit split changes the count without any creation).
@@ -41,7 +46,8 @@ Pure functions only.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
 
 import numpy as np
@@ -82,6 +88,43 @@ def creation_unit_sizes(universe: Any) -> dict[str, int | None]:
     return {e.symbol: e.creation_unit_size for e in universe.etfs}
 
 
+def creation_unit_histories(universe: Any) -> dict[str, list[tuple[date, int]]]:
+    """Symbol -> [(first date, size), ...] oldest first, only for ETFs with a history."""
+    return {
+        e.symbol: [(st.from_date, st.size) for st in e.creation_unit_history]
+        for e in universe.etfs
+        if e.creation_unit_history
+    }
+
+
+def size_on_dates(
+    dates: pd.Series,
+    symbols: pd.Series,
+    sizes: Mapping[str, int | None],
+    histories: Mapping[str, Sequence[tuple[date, int]]] | None = None,
+) -> pd.Series:
+    """Creation-unit size in force on each row's date (float; NaN where unknown).
+
+    ``sizes`` is the single current size per symbol. For a symbol in ``histories`` the size
+    is the last step whose first date is on or before the row's date; before the first step
+    it is NaN (the size then is not documented). Hand example (HDFCNIFTY): steps
+    ``[(2024-02-05, 4000), (2025-08-20, 20000)]`` give 4,000 on 2025-08-19 and 20,000 on
+    2025-08-20.
+    """
+    hist = histories or {}
+    d = pd.to_datetime(dates)
+    out = symbols.map(lambda s: sizes.get(s)).astype("float64")
+    for sym, steps in hist.items():
+        mask = symbols == sym
+        if not mask.any():
+            continue
+        starts = np.array([np.datetime64(f, "ns") for f, _ in steps])
+        vals = np.array([sz for _, sz in steps], dtype="float64")
+        pos = np.searchsorted(starts, d[mask].to_numpy(dtype="datetime64[ns]"), side="right") - 1
+        out.loc[mask] = np.where(pos >= 0, vals[np.clip(pos, 0, None)], np.nan)
+    return out.where(out > 0)
+
+
 def missing_creation_unit_sizes(
     symbols: list[str] | tuple[str, ...], sizes: Mapping[str, int | None]
 ) -> list[str]:
@@ -93,6 +136,7 @@ def units_changes(
     units_daily: pd.DataFrame,
     sizes: Mapping[str, int | None],
     *,
+    histories: Mapping[str, Sequence[tuple[date, int]]] | None = None,
     symbol_col: str = "symbol",
     date_col: str = "date",
     units_col: str = "units_outstanding",
@@ -102,8 +146,10 @@ def units_changes(
     ``units_daily`` has one row per (symbol, date). The first observation of a symbol
     has no previous value, so its change is NaN and it is not an event. A row with
     missing units keeps NaN changes; the next valid row is compared with the last
-    valid one. Raises on duplicate (symbol, date) or negative units (silently
-    "fixing" them would hide a bad file; the quality module flags them first).
+    valid one. ``histories`` (from :func:`creation_unit_histories`) gives dated size steps for
+    funds whose basket size changed; see :func:`size_on_dates`. Raises on duplicate
+    (symbol, date) or negative units (silently "fixing" them would hide a bad file; the
+    quality module flags them first).
     """
     for col in (symbol_col, date_col, units_col):
         if col not in units_daily.columns:
@@ -124,8 +170,7 @@ def units_changes(
     prev_d = valid_d.groupby(work[symbol_col], sort=False).transform(lambda s: s.ffill().shift(1))
 
     change = (work["_u"] - prev_u).where(work["_u"].notna() & prev_u.notna())
-    size = work[symbol_col].map(lambda s: sizes.get(s)).astype("float64")
-    size = size.where(size > 0)
+    size = size_on_dates(work["_d"], work[symbol_col], sizes, histories)
     cu = change / size
     multiple_ok = pd.Series(pd.NA, index=work.index, dtype="boolean")
     known = cu.notna()

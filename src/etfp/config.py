@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, time, timedelta
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 from zoneinfo import ZoneInfo
@@ -93,6 +94,20 @@ class FormerSymbol(_Frozen):
         return value
 
 
+class CreationUnitStep(_Frozen):
+    """One step of a fund's creation-unit history: ``size`` units per basket from ``from``.
+
+    A fund house can change the basket size (HDFCNIFTY: 4,000 units, then 20,000 from
+    20 Aug 2025). ``from`` is the first date the new size applies (YAML key ``from``).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    size: int = Field(gt=0)
+    from_date: _Date = Field(alias="from")
+    source: str | None = None  # where the step comes from (document, or "inferred from units")
+
+
 class Etf(_Frozen):
     """One exchange-traded fund in the universe."""
 
@@ -115,6 +130,11 @@ class Etf(_Frozen):
     # not known yet; a tracked foreign-market ETF must then list
     # "creation_unit_size" in ``verify`` so the gap is visible, not forgotten.
     creation_unit_size: int | None = Field(default=None, gt=0)
+    # Optional dated history of the basket size, oldest first. ``creation_unit_size`` is
+    # the CURRENT size and must equal the last step. Without a history the single size is
+    # applied to every date. With one, the size in force on a date is the last step whose
+    # ``from`` is on or before it; dates before the first step have no known size.
+    creation_unit_history: tuple[CreationUnitStep, ...] = ()
     bloomberg: Bloomberg = Field(default_factory=Bloomberg)
     notes: str | None = None
     verify: list[str] = Field(default_factory=list)  # field names not yet confirmed
@@ -128,6 +148,25 @@ class Etf(_Frozen):
             raise ValueError(f"{self.symbol}: former_symbols must be oldest first, one per date")
         if any(f.symbol == self.symbol for f in self.former_symbols):
             raise ValueError(f"{self.symbol}: a former symbol cannot equal the current symbol")
+        return self
+
+    @model_validator(mode="after")
+    def _creation_unit_history_consistent(self) -> Etf:
+        steps = self.creation_unit_history
+        if not steps:
+            return self
+        dates = [st.from_date for st in steps]
+        if dates != sorted(dates) or len(set(dates)) != len(dates):
+            raise ValueError(
+                f"{self.symbol}: creation_unit_history must be oldest first, one step per date"
+            )
+        if self.creation_unit_size != steps[-1].size:
+            raise ValueError(
+                f"{self.symbol}: creation_unit_size ({self.creation_unit_size}) must equal the "
+                f"last creation_unit_history step ({steps[-1].size})"
+            )
+        if any(a.size == b.size for a, b in pairwise(steps)):
+            raise ValueError(f"{self.symbol}: creation_unit_history repeats a size in a row")
         return self
 
     @field_validator("isin")

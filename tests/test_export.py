@@ -30,7 +30,7 @@ from test_clean_helpers import make_raw_root
 NOW = datetime(2026, 11, 13, 22, 0, tzinfo=IST)
 EXPECTED_FILES = {
     "etf_day.parquet", "inav_snapshots.parquet", "units_monthly.parquet", "units_daily.parquet",
-    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet", "feeder_nav_daily.parquet", "china_etf_daily.parquet", "valve_monthly.parquet", "notices.parquet", "bullion_ref_daily.parquet", "fx_ref_daily.parquet",
+    "unit_events.parquet", "fof_monthly.parquet", "events.parquet", "trends_daily.parquet", "limit_day.parquet", "slb_eligible.parquet", "slb_daily.parquet", "bse_prices.parquet", "feeder_nav_daily.parquet", "china_etf_daily.parquet", "valve_monthly.parquet", "notices.parquet", "bullion_ref_daily.parquet", "fx_ref_daily.parquet", "symbol_changes.parquet",
     "schema.json", "DATA_DICTIONARY.md", "manifest.json",
 }  # fmt: skip
 
@@ -130,9 +130,9 @@ def test_etf_day_parquet_round_trips_with_typed_columns(exported, built) -> None
 def test_schema_json_documents_every_exported_column(exported) -> None:
     folder, *_ = exported
     schema = json.loads((folder / "schema.json").read_text())
-    assert schema["schema_version"] == SCHEMA_VERSION == "1.7.0"
+    assert schema["schema_version"] == SCHEMA_VERSION == "1.8.0"
     assert [c["version"] for c in schema["changelog"]] == [
-        "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0"
+        "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0"
     ]  # fmt: skip
     assert "MEANING CHANGE" in schema["changelog"][1]["changes"]  # 1.1.0 turnover
     for name in (p.stem for p in folder.glob("*.parquet")):
@@ -148,7 +148,7 @@ def test_schema_json_documents_every_exported_column(exported) -> None:
 def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
     folder, *_ = exported
     text = (folder / "DATA_DICTIONARY.md").read_text()
-    assert "Schema version **1.7.0**" in text
+    assert "Schema version **1.8.0**" in text
     assert "## valve_monthly" in text and "| valve_status |" in text
     assert "## etf_day" in text and "| cap_pi |" in text and "| prem_nav_known |" in text
     assert text.count("\n| ") > len(ETF_DAY_COLUMNS)
@@ -157,7 +157,7 @@ def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
 def test_manifest_contents(exported) -> None:
     folder, _, _, _ = exported
     m = json.loads((folder / "manifest.json").read_text())
-    assert m["schema_version"] == "1.7.0"
+    assert m["schema_version"] == "1.8.0"
     assert m["build_time_ist"] == "2026-11-13T22:00:00+05:30"
     assert m["git"] == {"commit": "uncommitted", "dirty": True}  # the temp folder is no repo
     assert m["date_range"]["etf_day"] == {"first": "2021-01-04", "last": "2026-11-09"}
@@ -186,6 +186,7 @@ def test_manifest_contents(exported) -> None:
             "status": "PRELIMINARY",
         },
     ]
+    assert m["open_verify_state_counts"] == {"OPEN": 1, "PRELIMINARY": 1}
 
 
 def test_manifest_file_hashes_match_the_files(exported) -> None:
@@ -363,3 +364,49 @@ def test_1_3_0_changelog_and_new_columns_and_tables(exported) -> None:
     assert cols["x_april_fv"]["formula"] == "ln(close / (1.2 x fv))"
     assert "attention" in cols and cols["attention"]["type"] == "float"
     assert {"feeder_nav_daily", "china_etf_daily"} <= set(schema["tables"])
+
+
+def test_every_exported_column_has_a_full_doc_entry(exported) -> None:
+    """Definition, type, units, formula and source: none blank, for every column of every file."""
+    folder, *_ = exported
+    schema = json.loads((folder / "schema.json").read_text())
+    parquets = {p.stem for p in folder.glob("*.parquet")}
+    assert parquets == set(schema["tables"])  # no file without a documented table
+    for name in parquets:
+        cols = pq.read_table(folder / f"{name}.parquet").column_names
+        docs = {c["name"]: c for c in schema["tables"][name]["columns"]}
+        assert list(docs) == cols, name
+        for col, c in docs.items():
+            for field in ("type", "definition", "units", "formula", "source"):
+                assert c[field].strip(), f"{name}.{col} has an empty {field}"
+    assert "symbol_changes" in schema["tables"]
+
+
+def test_units_fallback_rules() -> None:
+    f = export._units_fallback
+    assert f("bse_prices", "close", "float") == "rupees per unit"
+    assert f("china_etf_daily", "close", "float") == "yuan per unit"
+    assert f("slb_daily", "value", "float") == "rupees"
+    assert f("trends_daily", "value", "float") == "index 0-100"
+    assert f("limit_day", "sell_qty_up_max", "int") == "units (ETF units)"
+    assert f("limit_day", "n_obs", "int") == "count"
+    assert f("limit_day", "minutes_at_limit_up", "float") == "minutes"
+    assert f("units_daily", "units_outstanding", "int") == "units (ETF units)"
+    assert (
+        f("events", "ts_ist", "timestamp")
+        == "timestamp, timezone-aware (zone stored with the value)"
+    )
+    assert f("x", "anything", "string") == "text"
+
+
+def test_verify_state_counts_group_by_first_word() -> None:
+    items = [
+        {"item": "a", "where_it_matters": "", "status": "OPEN (D53): fetch"},
+        {"item": "b", "where_it_matters": "", "status": "RESOLVED (D22): ok"},
+        {"item": "c", "where_it_matters": "", "status": "PARTLY (D49): x"},
+        {"item": "d", "where_it_matters": "", "status": "open"},
+        {"item": "e", "where_it_matters": "", "status": ""},
+    ]
+    assert export.verify_state_counts(items) == {
+        "OPEN": 2, "PARTLY": 1, "RESOLVED": 1, "UNSTATED": 1
+    }  # fmt: skip

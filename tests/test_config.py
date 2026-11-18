@@ -602,3 +602,67 @@ def test_domestic_control_creation_unit_sizes_from_scheme_documents():
     for symbol in ("PSUBNKBEES", "CPSEETF", "HDFCBSE500", "NEXT50IETF", "SBINIFTY50"):
         etf = u.by_symbol(symbol)
         assert etf.creation_unit_size is None and "creation_unit_size" in etf.verify, symbol
+
+
+def _etf_dict(**kw):
+    base = {
+        "symbol": "AAA",
+        "name": "A",
+        "amc": "X",
+        "isin": "INF000000001",
+        "amfi_scheme_code": 1,
+        "underlying_index": "Nifty 50",
+        "underlying_market": "IN",
+        "currency": "INR",
+        "asset_class": "equity",
+        "group": "control",
+        "tracked": False,
+    }
+    base.update(kw)
+    return base
+
+
+def test_creation_unit_history_valid_and_backward_compatible() -> None:
+    from etfp.config import Etf
+
+    plain = Etf.model_validate(_etf_dict(creation_unit_size=100))
+    assert plain.creation_unit_history == ()
+    ok = Etf.model_validate(
+        _etf_dict(
+            creation_unit_size=200,
+            creation_unit_history=[
+                {"size": 100, "from": "2024-01-01"},
+                {"size": 200, "from": "2025-01-01"},
+            ],
+        )
+    )
+    assert [s.size for s in ok.creation_unit_history] == [100, 200]
+
+
+@pytest.mark.parametrize(
+    "history, size, message",
+    [
+        (
+            [{"size": 100, "from": "2025-01-01"}, {"size": 200, "from": "2024-01-01"}],
+            200,
+            "oldest first",
+        ),
+        (
+            [{"size": 100, "from": "2024-01-01"}, {"size": 200, "from": "2024-01-01"}],
+            200,
+            "oldest first",
+        ),
+        ([{"size": 100, "from": "2024-01-01"}], 200, "must equal the last"),
+        (
+            [{"size": 100, "from": "2024-01-01"}, {"size": 100, "from": "2025-01-01"}],
+            100,
+            "repeats",
+        ),
+        ([{"size": 0, "from": "2024-01-01"}], 0, ""),
+    ],
+)
+def test_creation_unit_history_rejects_bad_input(history, size, message) -> None:
+    from etfp.config import Etf
+
+    with pytest.raises(ValueError, match=message):
+        Etf.model_validate(_etf_dict(creation_unit_size=size, creation_unit_history=history))

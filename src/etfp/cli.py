@@ -355,6 +355,40 @@ def collect_fbil(
             typer.echo(f"{status} {record.relpath} {record.size_bytes}")
 
 
+@collect_app.command("legacy-bhavcopy")
+def collect_legacy_bhavcopy(
+    date_text: Annotated[str, typer.Option("--date", help="Session to repair, YYYY-MM-DD.")],
+    mto: Annotated[
+        bool, typer.Option("--mto/--no-mto", help="Also save the MTO delivery file.")
+    ] = True,
+) -> None:
+    """Repair source: NSE's old-format bhavcopy (and MTO delivery file) for one session (D54).
+
+    For sessions where the full bhavcopy is missing or wrong (4 Nov 2021). Saved untouched
+    under data/raw/nse_bhavcopy_legacy/ and data/raw/nse_mto/; not part of the daily run.
+    """
+    from etfp.collect import nse_bhavcopy_legacy as legacy
+    from etfp.http import SourceError
+
+    _configure_logging()
+    day = _parse_day(date_text, "--date")
+    store = RawStore(paths.raw_dir())
+    fetchers = [legacy.fetch] + ([legacy.fetch_mto] if mto else [])
+    failed = False
+    with _build_client(load_collect_settings()) as client:
+        for fetch in fetchers:
+            try:
+                record = fetch(client, store, day)
+            except SourceError as exc:
+                typer.echo(f"FAILED {fetch.__name__} {day}: {type(exc).__name__}: {exc}", err=True)
+                failed = True
+                continue
+            status = "EXISTS" if record.duplicate else "OK"
+            typer.echo(f"{status} {record.relpath} {record.size_bytes} HTTP {record.status_code}")
+    if failed:
+        raise typer.Exit(1)
+
+
 @collect_app.command("notices")
 def collect_notices(
     from_text: Annotated[
