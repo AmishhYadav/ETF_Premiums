@@ -876,6 +876,20 @@ def _units_block(
     )
 
 
+def _units_stale_flag(
+    units_source: pd.Series, units_file_date: pd.Series, frozen_files: frozenset[date]
+) -> pd.Series:
+    """``dq_units_stale``: True where ``units`` is a security-master count taken from a file in
+    a frozen stretch (``valve.frozen_file_dates``); False for every other row, including rows
+    whose units come from the monthly AUM/NAV estimate or are missing."""
+    return _bools(
+        [
+            bool(src == "security_master" and f in frozen_files)
+            for src, f in zip(units_source, units_file_date, strict=True)
+        ]
+    )
+
+
 def _bse_block(days: list[date], bse: pd.DataFrame, price_factor: pd.Series) -> pd.DataFrame:
     """BSE close, units, rupees and trades on the NSE row's date (empty where BSE has no row).
 
@@ -924,6 +938,7 @@ def _symbol_frame(
     first_band_session: date | None,
     cfg: BuildConfig,
     data: Underlying,
+    frozen_files: frozenset[date] = frozenset(),
 ) -> pd.DataFrame:
     sym = etf.symbol
     px = px.sort_values("date").reset_index(drop=True)
@@ -982,6 +997,12 @@ def _symbol_frame(
 
     df["dq_nav_same_date_missing"] = _bools([bool(x) for x in df["nav_same_date"].isna()])
     df["dq_nav_t2_missing"] = _bools([bool(x) for x in df["nav_t2"].isna()])
+    # D51: the security-master file behind ``units`` sits in a stretch where NSE did not refresh
+    # IssdCptl for more than 4 weeks, so the count may be out of date. Flag only; the figure is
+    # never replaced (the AMC monthly units are a different measure).
+    df["dq_units_stale"] = _units_stale_flag(
+        df["units_source"], df["units_file_date"], frozen_files
+    )
     df["dq_units_aum_mismatch"] = _bools(
         [aum_flags.get((pd.Timestamp(d) + pd.offsets.MonthEnd(0)).date()) for d in days]
     )
@@ -1059,6 +1080,9 @@ def build_etf_day(
             )
             aum_flags.setdefault(rec.symbol, {})[rec.month_end] = flag
 
+    # D51: file dates inside a frozen stretch of the security master (all funds together).
+    frozen = frozenset(valve.frozen_file_dates(ud)) if len(ud) else frozenset()
+
     bo = tables["band_official"]
     first_band = min(bo["session_date"]) if len(bo) else None
 
@@ -1069,7 +1093,15 @@ def build_etf_day(
             continue
         frames.append(
             _symbol_frame(
-                etf, px, tables, changes, aum_flags.get(etf.symbol, {}), first_band, cfg, data
+                etf,
+                px,
+                tables,
+                changes,
+                aum_flags.get(etf.symbol, {}),
+                first_band,
+                cfg,
+                data,
+                frozen,
             )
         )
     if not frames:
@@ -1078,7 +1110,12 @@ def build_etf_day(
     df = premiums.add_return_columns(
         df, price_col="close", nav_col="nav_known_at_close", fv_col="fv"
     )
-    df = quality.add_quality_flags(df)
+    # SPEC 12 / D53: a duplicate (symbol, date) stops the build; the other checks only flag.
+    quality.require_no_duplicates(df)
+    df = quality.add_quality_flags(
+        df, markets={e.symbol: e.underlying_market for e in cfg.universe.etfs}
+    )
+    quality.log_build_summary(df)
     df["rationed"] = _add_rationed(df)
     df["usdinr_ref"] = _fx_ref_on(df["date"], tables["fx_ref_daily"], "USDINR")
 
@@ -1185,6 +1222,17 @@ def build_valve_monthly(store: Store, cfg: BuildConfig) -> pd.DataFrame:
     if len(um):
         um = um.copy()
         um["units"] = adjust_values(cfg.actions, um, value="units", kind="units", day="month_end")
+        # Days between the month-end and the date of the NAV used (D48). The explicit
+        # ``nav_date`` column is the source (D51); only rows that lack it fall back to the old
+        # text "AUM / AMFI NAV of 2022-04-29" in ``source`` (tables built before D51).
+        navd = (
+            pd.to_datetime(um["nav_date"])
+            if "nav_date" in um.columns
+            else pd.Series(pd.NaT, index=um.index)
+        )
+        text = pd.to_datetime(um["source"].str.extract(r"AMFI NAV of (\d{4}-\d{2}-\d{2})")[0])
+        navd = navd.fillna(text)
+        um["nav_lag_days"] = (pd.to_datetime(um["month_end"]) - navd).dt.days
     frame = valve.valve_monthly(
         ud, um, units.creation_unit_sizes(cfg.universe), [e.symbol for e in cfg.universe.etfs]
     )

@@ -65,7 +65,9 @@ FOF_COLUMNS = [
     "amfi_scheme_code", "month_end", "fund_name", "etf_symbol", "aum", "etf_units_held",
     "fof_net_flow", "subscription_status", "notice_date", "source_file",
 ]  # fmt: skip
-UNITS_COLUMNS = ["symbol", "month_end", "aum", "nav", "units", "source", "source_file"]
+UNITS_COLUMNS = [
+    "symbol", "month_end", "aum", "nav", "units", "source", "source_file", "nav_date",
+]  # fmt: skip
 
 
 # -- parsing every raw file (cached) ------------------------------------------------------
@@ -255,6 +257,9 @@ def units_rows(ctx: CleanContext) -> pd.DataFrame:
                 "units": aum / value,
                 "source": f"amc_portfolio_{amc} AUM / AMFI NAV of {nav_day}",
                 "source_file": f"{g['source_file'].iloc[0]}#{g['sheet'].iloc[0]}",
+                # Explicit date of the AMFI NAV used (D51); valve_monthly measures the gap to
+                # the month end from this instead of parsing the ``source`` text.
+                "nav_date": nav_day,
             }
         )
     if skipped:

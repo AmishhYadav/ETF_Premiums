@@ -575,3 +575,30 @@ def test_quote_capture_unknown_key_fails(tmp_path: Path):
     path = write(tmp_path, collect_yaml() + "\nnse_quote:\n  enabeld: false\n")
     with pytest.raises(Exception, match="enabeld"):
         load_collect_settings(path)
+
+
+def test_domestic_control_creation_unit_sizes_from_scheme_documents():
+    """D50: sizes read from AMC documents (Nippon, HDFC, Mirae, Motilal, ICICI, Kotak).
+
+    Left null on purpose where documents conflict or none was found (DECISIONS D50).
+    """
+    u = load_etfs()
+    expected = {
+        "ITBEES": 100_000,
+        "HDFCSML250": 35_000,
+        "MID150BEES": 35_000,
+        "PHARMABEES": 75_000,
+        "HDFCNIFTY": 20_000,  # w.e.f. 20 Aug 2025; 4,000 before (data only)
+        "NIFTYETF": 50_000,
+        "MIDCAPETF": 400_000,
+        "NIFTY1": 12_500,
+        "MOM100": 125_000,
+        "SENSEXIETF": 10_000,
+    }
+    for symbol, size in expected.items():
+        etf = u.by_symbol(symbol)
+        assert etf.creation_unit_size == size, symbol
+        assert "creation_unit_size" not in etf.verify, symbol
+    for symbol in ("PSUBNKBEES", "CPSEETF", "HDFCBSE500", "NEXT50IETF", "SBINIFTY50"):
+        etf = u.by_symbol(symbol)
+        assert etf.creation_unit_size is None and "creation_unit_size" in etf.verify, symbol

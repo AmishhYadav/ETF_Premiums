@@ -21,22 +21,19 @@ Same rules as ``nav_daily``:
   holiday for some fund houses, DECISIONS D22). That day is simply missing, never filled.
 
 Speed: the AMFI files are big (about 2.5 MB each, 130+ of them) and hold every mutual
-fund, so before parsing we keep only the header and the lines of our feeder scheme codes.
-The parser then sees a tiny file. (A malformed line of some OTHER scheme is therefore
-not noticed here; ``nav_daily`` reads the whole file and reports it.)
+fund, so ``clean._amfi`` parses each file once per build and keeps only the rows of our
+scheme codes (ETFs and feeders); ``nav_daily`` and this table share that one parse (D50).
 """
 
 from __future__ import annotations
 
 import logging
-import re
 
 import pandas as pd
 
-from etfp.clean.common import CleanContext, RawFile, list_raw_files, parse_file
-from etfp.collect import amfi_nav
-from etfp.config import Feeder, load_feeders
-from etfp.paths import config_dir
+from etfp.clean import _amfi
+from etfp.clean.common import CleanContext, RawFile
+from etfp.config import Feeder
 from etfp.store import SCHEMAS, Column, TableSchema, register_schema
 
 logger = logging.getLogger("etfp.clean")
@@ -45,7 +42,6 @@ TABLE = "feeder_nav_daily"
 COLUMNS = ["scheme_code", "fund_name", "etf_symbol", "nav_date", "nav", "source_file"]
 _SAME_NAV = 1e-6  # NAVs have 3-4 decimals; more than rounding noise counts as a revision
 _RANK = {"history": 0, "navall": 1}  # lower wins
-_LINE = re.compile(rb"\r\n|\r|\n")
 
 if TABLE not in SCHEMAS:
     register_schema(
@@ -65,58 +61,20 @@ if TABLE not in SCHEMAS:
     )
 
 
-def _only_feeder_lines(content: bytes, codes: set[int]) -> bytes | None:
-    """The header line plus every line whose first field is one of ``codes``.
-
-    Returns None when no line belongs to a feeder (the feeders did not exist yet in
-    the older AMFI files); such a file adds nothing and is not parsed.
-    """
-    wanted = {str(c).encode() for c in codes}
-    kept: list[bytes] = []
-    header_seen = False
-    for line in _LINE.split(content):
-        if not line.strip():
-            continue
-        if not header_seen:
-            kept.append(line)
-            header_seen = True
-        elif line.split(b";", 1)[0].strip() in wanted:
-            kept.append(line)
-    if len(kept) < 2:
-        return None
-    return b"\n".join(kept) + b"\n"
-
-
-def _parse_feeders(content: bytes, parser, rf: RawFile, codes: set[int]) -> pd.DataFrame | None:
-    small = _only_feeder_lines(content, codes)
-    return None if small is None else parser(small, source_file=rf.relpath)
-
-
 def _same_name(a: str, b: str) -> bool:
     return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
 
 
 def build(ctx: CleanContext) -> pd.DataFrame:
     """Build feeder_nav_daily from every AMFI file in the raw store."""
-    config_path = ctx.raw_root.parent.parent / "config" / "feeders.yaml"
-    feeders = load_feeders(config_path if config_path.exists() else config_dir() / "feeders.yaml")
+    feeders = _amfi.feeders_for(ctx)
     known = ctx.config_symbols()
     unknown = sorted({f.etf_symbol for f in feeders.feeders} - known)
     if unknown:
         raise ValueError(f"{TABLE}: config/feeders.yaml names unknown ETF symbol(s) {unknown}")
     by_code = {f.amfi_scheme_code: f for f in feeders.feeders}
 
-    frames: list[pd.DataFrame] = []
-    for source, kind, parser in (
-        (amfi_nav.SOURCE_HISTORY, "history", amfi_nav.parse_history),
-        (amfi_nav.SOURCE_NAVALL, "navall", amfi_nav.parse_navall),
-    ):
-        for rf in list_raw_files(ctx.raw_root, source):
-            frame = parse_file(
-                TABLE, rf, lambda b, rf=rf, p=parser: _parse_feeders(b, p, rf, set(by_code))
-            )
-            if frame is not None:
-                frames.append(_select(frame, rf, kind, by_code))
+    frames = [_select(frame, rf, kind, by_code) for rf, kind, frame in _amfi.load(ctx, TABLE)]
 
     frames = [f for f in frames if not f.empty]
     if not frames:

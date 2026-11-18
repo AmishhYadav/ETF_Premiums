@@ -10,11 +10,12 @@ Sources (the ``source`` column) and what each one fills:
 nse_etf_api    NSE ETF table: last price, volume, value, previous NAV
 amc_motilal    Motilal Oswal's own page: iNAV, previous NAV
 amc_mirae      Mirae Asset's own page: iNAV, previous NAV
-amc_nippon     Nippon India's own page: iNAV, previous NAV (values doubtful, D15)
+amc_nippon     Nippon India's own page: iNAV, previous NAV (feed frozen, D49)
 nse_quote      NSE single-ETF quote: last price, iNAV, order book (see below)
 =============  ==========================================================
 
-Columns a source does not give stay empty; they are never zero.
+Columns a source does not give stay empty; they are never zero. ``inav_stale`` marks an
+iNAV that stopped moving (see ``_flag_stale_inav``).
 
 Time (important): ``ts`` is when WE fetched the answer, in IST, taken from the raw
 file name (``etf_HHMMSS.json`` / ``inav_HHMMSS.json``) and its date folder. The
@@ -60,8 +61,9 @@ NSE_QUOTE_SOURCE = "nse_quote"  # raw-store folder expected for the future quote
 COLUMNS = [
     "symbol", "ts", "source", "last_price", "inav", "prev_nav", "bid", "ask", "bid_qty",
     "ask_qty", "total_buy_qty", "total_sell_qty", "depth_json", "volume", "value", "data_ts",
-    "amc_ts_raw", "market_status", "source_file",
+    "amc_ts_raw", "market_status", "source_file", "inav_stale",
 ]  # fmt: skip
+_FRAME_COLUMNS = [c for c in COLUMNS if c != "inav_stale"]  # inav_stale is added after the merge
 _FLOATS = ["last_price", "inav", "prev_nav", "bid", "ask", "value"]
 _INTS = ["bid_qty", "ask_qty", "total_buy_qty", "total_sell_qty", "volume"]
 _STRINGS = ["depth_json", "amc_ts_raw", "market_status"]
@@ -90,7 +92,7 @@ def build(ctx: CleanContext) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame({c: [] for c in COLUMNS})
     out = pd.concat(frames, ignore_index=True)
-    return _one_row_per_key(out)[COLUMNS]
+    return _flag_stale_inav(_one_row_per_key(out))[COLUMNS]
 
 
 def _fetch_time(rf: RawFile) -> datetime:
@@ -120,7 +122,7 @@ def _frame(
     """
     n = len(symbols)
     cols: dict[str, pd.Series] = {}
-    for name in COLUMNS:
+    for name in _FRAME_COLUMNS:
         values = list(given[name]) if name in given else [None] * n
         if name in _FLOATS:
             cols[name] = pd.Series(pd.to_numeric(pd.Series(values, dtype=object)), dtype="float64")
@@ -134,7 +136,7 @@ def _frame(
     cols["ts"] = _stamps([ts] * n)
     cols["source"] = pd.Series(pd.array([source] * n, dtype="string"))
     cols["source_file"] = pd.Series(pd.array([source_file] * n, dtype="string"))
-    return pd.DataFrame(cols)[COLUMNS]
+    return pd.DataFrame(cols)[_FRAME_COLUMNS]
 
 
 # -- NSE ETF table ------------------------------------------------------------
@@ -346,6 +348,58 @@ def _nse_quote(
         return _frame(ts, "nse_quote", source_file, [])
     given = {k: [v] for k, v in row.items() if k != "symbol"}
     return _frame(ts, "nse_quote", source_file, [row["symbol"]], **given)
+
+
+# -- stale iNAV flag --------------------------------------------------------------
+
+STALE_RUN = 4  # this many identical iNAVs in a row (one hour at 15-minute ticks) = stale
+_SESSION_START = time(9, 15)
+_SESSION_END = time(15, 30)
+
+
+def _flag_stale_inav(df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``inav_stale``: the iNAV has not changed for ``STALE_RUN`` snapshots in a row.
+
+    Why: an iNAV is supposed to move with the market. A fund house's page can keep
+    answering with the same number all day (Nippon: one value for every ETF on 16 and
+    17 Nov 2026; Motilal's US-index ETFs: one value for the whole of 16 Nov), while its own
+    time stamp keeps advancing (D15, D49). A real iNAV of an ETF on a live market never
+    repeats to six decimals four ticks running.
+
+    Rule: within one (source, symbol, IST day), look only at snapshots inside the NSE
+    session (09:15-15:30 IST). A snapshot is stale when it is the 4th (or later) one in a
+    run of exactly equal iNAV values; the first three of a run are not flagged (they look
+    like any quiet quarter-hour). Snapshots outside the session are False, and a snapshot
+    with no iNAV (price-only sources) is missing, never False.
+
+    The flag says "this number is not moving", not "this number is wrong"; that second
+    judgement is in D49.
+    """
+    out = df.copy()
+    inav = pd.to_numeric(out["inav"], errors="coerce")
+    local = pd.DatetimeIndex(pd.to_datetime(out["ts"])).tz_convert(IST)
+    in_session = pd.Series(
+        (local.time >= _SESSION_START) & (local.time <= _SESSION_END), index=out.index
+    )
+    work = pd.DataFrame(
+        {
+            "source": out["source"],
+            "symbol": out["symbol"],
+            "day": local.date,
+            "ts": local,
+            "inav": inav,
+        },
+        index=out.index,
+    )[in_session & inav.notna()].sort_values("ts", kind="stable")
+    keys = [work["source"], work["symbol"], work["day"]]
+    new_run = work["inav"].ne(work.groupby(keys)["inav"].shift())
+    run_id = new_run.groupby(keys).cumsum()
+    position = work.groupby([*keys, run_id]).cumcount() + 1
+    flag = pd.Series(pd.NA, index=out.index, dtype="boolean")
+    flag[inav.notna()] = False
+    flag.loc[work.index] = (position >= STALE_RUN).to_numpy()
+    out["inav_stale"] = flag
+    return out
 
 
 # -- duplicates -----------------------------------------------------------------

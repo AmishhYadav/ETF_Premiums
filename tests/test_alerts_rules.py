@@ -49,7 +49,9 @@ def test_shipped_config_loads() -> None:
     cfg = load_alert_config(config_dir() / "alerts.yaml")
     assert cfg.premium_cross.levels_pct == [25, 50, 100]
     assert cfg.premium_jump.points == 10
-    assert "amc_nippon" not in cfg.inav_premium_cross.inav_sources  # untrusted source (D15)
+    assert "amc_nippon" not in cfg.inav_premium_cross.inav_sources  # frozen feed (D49)
+    assert cfg.inav_premium_cross.inav_excluded == {"amc_motilal": ["MON100", "MONQ50"]}
+    assert cfg.inav_premium_cross.skip_stale is True
 
 
 def test_config_rejects_unknown_key_and_bad_levels(tmp_path) -> None:
@@ -409,3 +411,24 @@ def test_recorder_failed_source_alert() -> None:
 def test_evaluate_requires_aware_now() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         evaluate(pd.DataFrame(), config=make_config(), now=datetime(2026, 11, 13, 22, 0))  # noqa: DTZ001
+
+
+def test_paired_premium_drops_excluded_and_stale_inav_rows() -> None:
+    snaps = snaps_for([120, 130, 160])
+    # an ETF/source pair on the exclusion list is ignored
+    assert rules.paired_inav_premium(
+        snaps, D_LAST, ["amc_motilal"], excluded={"amc_motilal": ["MONQ50"]}
+    ).empty
+    # exclusion is per source: the same ETF from another listed source still pairs
+    both = pd.concat([snaps, snaps_for([120, 130, 160], inav=80.0, source="amc_mirae")])
+    out = rules.paired_inav_premium(
+        both, D_LAST, ["amc_motilal", "amc_mirae"], excluded={"amc_motilal": ["MONQ50"]}
+    )
+    assert set(out["source"]) == {"amc_mirae"}
+    assert out["prem"].iloc[0] == pytest.approx(120 / 80 - 1)
+    # rows flagged stale are dropped only when asked
+    # rows alternate iNAV, price per tick; ticks 1 and 3 have a stale iNAV
+    flagged = snaps.assign(inav_stale=[True, False, False, False, True, False])
+    assert len(rules.paired_inav_premium(flagged, D_LAST, ["amc_motilal"])) == 3
+    kept = rules.paired_inav_premium(flagged, D_LAST, ["amc_motilal"], skip_stale=True)
+    assert list(kept["prem"].round(4)) == [0.3]  # only the middle tick (130/100) was not stale

@@ -22,7 +22,7 @@ Wording rule (CLAUDE.md): alerts describe what the data shows. They never sugges
 from __future__ import annotations
 
 import math
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -103,6 +103,11 @@ class InavCrossRule(_Frozen):
     enabled: bool = True
     levels_pct: list[float]
     inav_sources: list[str] = Field(min_length=1)
+    # Per source, ETFs whose iNAV from that source is NOT used (D49). Example:
+    # {"amc_motilal": ["MON100", "MONQ50"]} drops Motilal's US-index iNAVs only.
+    inav_excluded: dict[str, list[str]] = Field(default_factory=dict)
+    # A row flagged inav_stale (the iNAV stopped moving, clean/inav_snapshots.py) is not used.
+    skip_stale: bool = True
     max_pair_gap_minutes: float = Field(gt=0)
 
     _levels = field_validator("levels_pct")(_check_levels)
@@ -391,8 +396,14 @@ def paired_inav_premium(
     day: date,
     sources: Iterable[str],
     max_gap_minutes: float = 10.0,
+    excluded: Mapping[str, Iterable[str]] | None = None,
+    skip_stale: bool = False,
 ) -> pd.DataFrame:
     """Premium of the last traded price over the iNAV, per snapshot time, for one IST day.
+
+    ``excluded`` maps a source to ETF symbols whose iNAV from that source is ignored (an
+    iNAV that is known not to track the market, D49). With ``skip_stale`` rows flagged
+    ``inav_stale`` (value frozen for 4+ snapshots) are ignored too.
 
     Why pairing is needed: fund-house (AMC) pages give the iNAV but no exchange price, and the
     NSE feed gives the price. Each iNAV row is matched with the nearest price row of the same
@@ -408,6 +419,11 @@ def paired_inav_premium(
     if snapshots is None or snapshots.empty or not needed <= set(snapshots.columns):
         return empty
     snap = snapshots[["symbol", "ts", "source", "last_price", "inav"]].copy()
+    snap["stale"] = (
+        snapshots["inav_stale"].fillna(False).astype(bool).to_numpy()
+        if skip_stale and "inav_stale" in snapshots.columns
+        else False
+    )
     stamps = pd.to_datetime(snap["ts"])
     if stamps.dt.tz is None:
         raise ValueError("snapshot timestamps must be timezone-aware (project rule)")
@@ -416,7 +432,11 @@ def paired_inav_premium(
     snap["inav"] = pd.to_numeric(snap["inav"], errors="coerce")
     snap["last_price"] = pd.to_numeric(snap["last_price"], errors="coerce")
 
-    inav_rows = snap[(snap["inav"] > 0) & snap["source"].isin(list(sources))]
+    usable = (snap["inav"] > 0) & snap["source"].isin(list(sources))
+    for source, symbols in (excluded or {}).items():
+        usable &= ~((snap["source"] == source) & snap["symbol"].isin(list(symbols)))
+    usable &= ~snap["stale"]
+    inav_rows = snap[usable]
     price_rows = snap[snap["last_price"] > 0]
     if inav_rows.empty or price_rows.empty:
         return empty
@@ -452,7 +472,10 @@ def paired_inav_premium(
 
 
 def _inav_cross(snapshots: pd.DataFrame | None, rule: InavCrossRule, day: date) -> list[Alert]:
-    paired = paired_inav_premium(snapshots, day, rule.inav_sources, rule.max_pair_gap_minutes)
+    paired = paired_inav_premium(
+        snapshots, day, rule.inav_sources, rule.max_pair_gap_minutes,
+        excluded=rule.inav_excluded, skip_stale=rule.skip_stale,
+    )  # fmt: skip
     levels_pct = rule.levels_pct
     levels = _fractions(levels_pct)
     alerts: list[Alert] = []

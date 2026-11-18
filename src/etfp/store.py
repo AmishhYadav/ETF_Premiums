@@ -242,6 +242,12 @@ _SCHEMAS: tuple[TableSchema, ...] = (
             Column("amc_ts_raw", "string", "Fund house's own stamp as text; evidence only (D15)"),
             Column("market_status", "string", "NSE market status text, e.g. Open or Close"),
             Column("source_file", "string", _SRC),
+            Column(
+                "inav_stale",
+                "bool",
+                "True when the iNAV repeated exactly for 4+ snapshots in a row in the session "
+                "(feed not moving, D49); missing when the row has no iNAV",
+            ),
         ],
     ),
     _t(
@@ -309,6 +315,11 @@ _SCHEMAS: tuple[TableSchema, ...] = (
             Column("units", "float", "AUM / NAV (an estimate, so not a whole number)"),
             Column("source", "string", "Where the AUM came from, e.g. amfi or factsheet"),
             Column("source_file", "string", _SRC),
+            Column(
+                "nav_date",
+                "date",
+                "Date of the AMFI NAV used (automatic AMC rows); empty if not given (D51)",
+            ),
         ],
     ),
     _t(

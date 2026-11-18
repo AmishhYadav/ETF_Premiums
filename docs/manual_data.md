@@ -74,10 +74,11 @@ Month-end units outstanding before NSE's daily file exists. `units = aum / nav` 
 | `nav` | no | NAV per unit used, rupees |
 | `units` | no | typed units; blank = `aum / nav` |
 | `source` | yes | where the figures came from, e.g. `amfi 2022-01`, `factsheet` |
+| `nav_date` | no | date (YYYY-MM-DD) the NAV in `nav` was struck on; leave blank if unknown or if you typed `units` directly. Old files without this column still load (D51) |
 
 Give `units`, or both `aum` and `nav`. If all three are given they must agree within 1% (a common mistake is AUM in crores).
 
-**Automatic rows (D46).** Months without a typed row are filled from the ETF's own monthly portfolio file: `aum` = total net assets (GRAND TOTAL line, rupees), `nav` = the last AMFI NAV on or before the month end (`nav_daily`; at most 5 days earlier, else no row), `units` = `aum / nav`, `source` = `amc_portfolio_<amc> AUM / AMFI NAV of <date>`, `source_file` = `<raw file>#<sheet>`. A typed row wins; a difference above 1% is logged. Check against NSE's own units: `uv run etfp amc-portfolio crosscheck`.
+**Automatic rows (D46).** Months without a typed row are filled from the ETF's own monthly portfolio file: `aum` = total net assets (GRAND TOTAL line, rupees), `nav` = the last AMFI NAV on or before the month end (`nav_daily`; at most 5 days earlier, else no row), `units` = `aum / nav`, `source` = `amc_portfolio_<amc> AUM / AMFI NAV of <date>`, `source_file` = `<raw file>#<sheet>`, `nav_date` = the date of that AMFI NAV (explicit column; `valve_monthly` uses it for `nav_lag_days`, D51). A typed row wins; a difference above 1% is logged. Check against NSE's own units: `uv run etfp amc-portfolio crosscheck`.
 
 ## `data/raw/trends/<pull date>/*.csv` -> table `trends_daily` (R15)
 

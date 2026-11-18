@@ -51,13 +51,20 @@ was struck on, and the rupee rate now and at the NAV's time.
 |---|---|---|---|
 | `NQ1` | E-mini Nasdaq-100 front-month future | MONQ50, MON100 | `PX_LAST` at **15:30 Asia/Kolkata** on every Indian trading day; `PX_LAST` at the **US cash close (16:00 America/New_York)** on every US trading day |
 | `ES1` | E-mini S&P 500 front-month future (proxy for S&P Top 50 and FANG+, SPEC 6.2) | MASPTOP50, MAFANG | same as `NQ1` |
-| `USDINR` | Rupees per US dollar | US ETFs | `PX_LAST` at 15:30 Asia/Kolkata on every Indian trading day; one rate per US trading day at the time the fund house uses for its NAV (record that time in `time`; unknown yet, DECISIONS D10) |
-| `HKDINR` | Rupees per Hong Kong dollar | MAHKTECH, HNGSNGBEES | `PX_LAST` at 15:30 Asia/Kolkata on every Indian trading day; one rate per Hong Kong trading day at NAV time |
+| `USDINR` | Rupees per US dollar | US ETFs | `PX_LAST` at 15:30 Asia/Kolkata on every Indian trading day; **and** one rate per US trading day stamped **between 09:30 and 17:00 New York** (use 16:00, the US close). The build takes the last row inside that window as the rupee rate at NAV time (D52); a 15:30 IST row alone is outside it, so the day gets no Bloomberg fair value |
+| `HKDINR` | Rupees per Hong Kong dollar | MAHKTECH, HNGSNGBEES | `PX_LAST` at 15:30 Asia/Kolkata on every Indian trading day; **and** one rate per Hong Kong trading day stamped between 09:30 and 17:00 Asia/Hong_Kong (use 16:00). Same rule as `USDINR`. If `HKDINR Curncy` does not exist, compute it in Excel as `USDINR / USDHKD` at the same minute and say so in `note` |
 | `NDX`, `SPX`, `HSI`, `HSTECH` | Underlying index closes | checks, beta (R12) | `PX_LAST` at each market's close |
 | anything else | For example China ETF codes (R17) | other tables | any `PX_LAST`, `FUND_NET_ASSET_VAL`, `EQY_SH_OUT` |
 
 Which tickers Bloomberg actually uses (`NQ1 Index`, `ES1 Index`, `USDINR Curncy`, ...) goes in the
-`note` column or `config/etfs.yaml`; the `instrument` code here is the project's own name.
+`note` column; the `instrument` code here is the project's own name. The full ticker list for the
+terminal session is in `docs/BLOOMBERG_SESSION.md`.
+
+**Turning bars into "price at HH:MM" rows.** Bloomberg labels an intraday bar with its START time.
+The price at 15:30 is therefore the CLOSE of the bar labelled 15:29 (it covers 15:29 to 15:30).
+Write that value in a row whose `time` is `15:30`. Do the same for 16:00 New York (close of the
+15:59 bar) and 16:00 Hong Kong. ETF minute bars (below) are the exception: they keep the bar's own
+start label.
 
 VERIFY before relying on the numbers:
 
@@ -94,7 +101,9 @@ date,time,timezone,instrument,field,value,note
 2026-11-10,10:15,Asia/Kolkata,MONQ50.1M,VOLUME,1200,
 ```
 
-Pull them with `=BDIB("MONQ50 IN Equity", "TRADE", start, end, "BarSize=1")` (or the intraday
+Pull them with `=BDIB("MONQ50 IS Equity", "TRADE", start, end, "BarSize=1")` (`IS` is Bloomberg's
+code for the NSE, `IN` is the India composite; VERIFY on the terminal, the limit-day diagnostics are
+about NSE prices, so use the NSE line; or the intraday
 tools) for the sessions of interest only (days a limit was touched, at least Sep-Oct 2026); the
 volume of rows is large. Read them back with `bloomberg.etf_minute_bars(frame, "MONQ50")`.
 
@@ -139,7 +148,11 @@ The synthetic test files are in `tests/fixtures/bloomberg_china/`.
 2. Reshape to long form: Data > Get Data > Power Query, select the date columns, Unpivot, then
    add the constant columns `time`, `timezone`, `instrument`, `field`.
 3. Format `date` as text `YYYY-MM-DD` (Excel's default `04/09/2026` is rejected).
-4. Save as CSV UTF-8 (a BOM at the start is accepted).
+4. Delete every row whose value is `#N/A N/A`, blank, or text (holidays, halted days): the importer
+   rejects the whole file otherwise. A missing day is reported by `etfp bloomberg check`; a wrong
+   number is not.
+5. Save as CSV UTF-8 (a BOM at the start is accepted).
+6. Check with `uv run etfp bloomberg check` before building (see `docs/BLOOMBERG_SESSION.md`).
 
 ## What the importer checks
 
@@ -147,4 +160,8 @@ It stops with the file name and line number for: wrong or missing header, a date
 another format, an unknown time zone, a value that is not a plain number, a price that is zero or
 negative, or the same (time, instrument, field) twice. Afterwards `check_coverage` /
 `assert_coverage` compare the data with the NSE, NYSE and HKEX trading calendars and name every
-trading day for which a required row is missing.
+trading day for which a required row is missing. `uv run etfp bloomberg check` runs the import and
+this coverage check (plus: ETF minute bars stamped outside 09:15-15:29 IST, a sign of a wrong
+terminal time zone; China ETF rows present) and exits 1 on any problem. After a build,
+`uv run etfp bloomberg report` shows how much of it reached `etf_day`, `limit_day` and
+`china_etf_daily`.

@@ -258,7 +258,9 @@ etfs:
   # ---- R20 domestic controls (DECISIONS D42). ISIN from NSE eq_etfseclist.csv (2026-11-16);
   # AMFI code matched by ISIN in NAVAll.txt (2026-11-16) and present in AMFI NAV history
   # from 2021 (or launch); avg traded value Jun-Oct 2026 in the notes is from NSE full bhavcopy.
-  # Creation-unit sizes not read from scheme documents yet (verify).
+  # Creation-unit sizes (D50): documents saved under data/raw/scheme_docs/2026-11-18/. Left null (verify):
+  # SBINIFTY50, ICICIB22, BANKBETA, NIFTYBETA (no document found); PSUBNKBEES, CPSEETF (AMC documents conflict);
+  # HDFCBSE500 (doc 1,155,000 vs data multiples of 415,000); NEXT50IETF (doc 100,000 but one real non-multiple).
 
   - symbol: ITBEES
     name: "Nippon India ETF Nifty IT"
@@ -272,10 +274,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 100000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2020-07-01. Avg traded value Jun-Oct 2026 Rs 58.10 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2020-07-01. Avg traded value Jun-Oct 2026 Rs 58.10 cr/day. Creation unit 100,000 (Nippon product note Jul 2026 pp.2,5 and fund page; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: NETFIT
         until: 2022-05-09
@@ -310,10 +312,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 35000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2019-02-04. Avg traded value Jun-Oct 2026 Rs 18.82 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2019-02-04. Avg traded value Jun-Oct 2026 Rs 18.82 cr/day. Creation unit 35,000 (Nippon product notes Jul and Sep 2026 p.2, fund page; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: NETFMID150
         until: 2022-05-09
@@ -348,10 +350,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 75000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2021-07-07. Avg traded value Jun-Oct 2026 Rs 13.87 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2021-07-07. Avg traded value Jun-Oct 2026 Rs 13.87 cr/day. Creation unit 75,000 (Nippon product notes Jul and Aug 2026 pp.2,5; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: NETFPHARMA
         until: 2022-05-09
@@ -407,10 +409,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 10000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2014-07-23. Avg traded value Jun-Oct 2026 Rs 1.66 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2014-07-23. Avg traded value Jun-Oct 2026 Rs 1.66 cr/day. Creation unit 10,000 w.e.f. 11 Jan 2021 (ICICI Pru factsheet p.1; D50). Two ICICI-wide security-master glitches (25 Nov and 30 Dec 2024, about +/-150M units) are not multiples."
+    verify: [bloomberg]
     former_symbols:
       - symbol: ICICISENSX
         until: 2023-12-19
@@ -428,10 +430,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 35000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2023-02-21. Avg traded value Jun-Oct 2026 Rs 30.32 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2023-02-21. Avg traded value Jun-Oct 2026 Rs 30.32 cr/day. Creation unit 35,000 (HDFC Fund Facts Jun 2026 p.1; D50)."
+    verify: [bloomberg]
 
   - symbol: HDFCBSE500
     name: "HDFC BSE 500 ETF"
@@ -462,10 +464,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 20000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2015-12-16. Avg traded value Jun-Oct 2026 Rs 7.71 cr/day. 10:1 unit split, price ex-date 2021-02-17 (config/corporate_actions.yaml)."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2015-12-16. Avg traded value Jun-Oct 2026 Rs 7.71 cr/day. 10:1 unit split, price ex-date 2021-02-17 (config/corporate_actions.yaml). Creation unit 20,000 w.e.f. 20 Aug 2025 (HDFC Fund Facts Jun 2026 p.1); earlier size not documented, units data before then are whole multiples of 4,000 (D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: HDFCNIFETF
         until: 2023-06-15
@@ -483,10 +485,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 50000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2018-11-26. Avg traded value Jun-Oct 2026 Rs 7.40 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2018-11-26. Avg traded value Jun-Oct 2026 Rs 7.40 cr/day. Creation unit 50,000 (Mirae SID May 2025 p.11; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: MAN50ETF
         until: 2023-08-31
@@ -504,10 +506,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 400000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2022-03-15. Avg traded value Jun-Oct 2026 Rs 6.24 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2022-03-15. Avg traded value Jun-Oct 2026 Rs 6.24 cr/day. Creation unit 400,000 (Mirae Nifty Midcap 150 ETF SID pp.8-9, undated file; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: MAM150ETF
         until: 2023-08-31
@@ -525,10 +527,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 12500
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2010-02-11. Avg traded value Jun-Oct 2026 Rs 4.88 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2010-02-11. Avg traded value Jun-Oct 2026 Rs 4.88 cr/day. Creation unit 12,500 (Kotak ETF page read 18 Nov 2026; the page says it was 50,000 before 6 Nov 2026 but the units data are whole multiples of 12,500 throughout; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: KOTAKNIFTY
         until: 2024-03-19
@@ -588,10 +590,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 125000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2011-02-04. Avg traded value Jun-Oct 2026 Rs 2.71 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2011-02-04. Avg traded value Jun-Oct 2026 Rs 2.71 cr/day. Creation unit 125,000 (Motilal SID May 2026 pp.5,44; D50)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: M100
         until: 2021-06-15

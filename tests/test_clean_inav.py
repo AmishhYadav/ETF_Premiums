@@ -260,3 +260,52 @@ def test_price_block_in_an_unknown_shape_still_stops_the_build(tmp_path: Path) -
     add_pair(root, price={"info": {"symbol": "MONQ50"}, "somethingNew": {}}, book=None)
     with pytest.raises(CleanError, match=r"MONQ50_113020\.json"):
         build_snaps(root)
+
+
+# -- inav_stale flag (D49) ----------------------------------------------------------
+
+
+def _stale_frame(rows: list[tuple[str, str, str, float | None]]) -> pd.DataFrame:
+    """Minimal frame of (source, symbol, 'YYYY-MM-DD HH:MM' IST, inav) rows."""
+    return pd.DataFrame(
+        {
+            "source": [r[0] for r in rows],
+            "symbol": [r[1] for r in rows],
+            "ts": pd.to_datetime([r[2] for r in rows]).tz_localize("Asia/Kolkata"),
+            "inav": [r[3] for r in rows],
+        }
+    )
+
+
+def test_inav_stale_flags_the_fourth_identical_value_onwards() -> None:
+    values = [100.0, 100.0, 100.0, 100.0, 100.0, 101.0, 101.0]
+    rows = [
+        ("amc_x", "A", f"2026-11-16 {10 + i // 4}:{15 * (i % 4):02d}", v)
+        for i, v in enumerate(values)
+    ]
+    out = inav_snapshots._flag_stale_inav(_stale_frame(rows))
+    # runs: 100 x5 (4th and 5th flagged), 101 x2 (none flagged)
+    assert list(out["inav_stale"]) == [False, False, False, True, True, False, False]
+
+
+def test_inav_stale_is_per_source_symbol_and_day_and_ignores_off_hours_and_missing() -> None:
+    rows = [("amc_x", "A", f"2026-11-16 10:{m:02d}", 5.0) for m in (0, 15, 30, 45)]  # stale at 4th
+    rows += [("amc_x", "B", f"2026-11-16 10:{m:02d}", 5.0) for m in (0, 15, 30)]  # only 3
+    rows += [("amc_x", "A", "2026-11-17 09:15", 5.0)]  # same value next day: a new run
+    rows += [("amc_x", "C", f"2026-11-16 {h}:00", 7.0) for h in (7, 8, 16, 17, 18)]  # off-hours
+    rows += [("nse_etf_api", "A", "2026-11-16 10:00", None)]  # price-only row: no iNAV
+    out = inav_snapshots._flag_stale_inav(_stale_frame(rows))
+    flags = list(out["inav_stale"])
+    assert flags[:4] == [False, False, False, True]
+    assert flags[4:7] == [False, False, False]
+    assert not flags[7]
+    assert flags[8:13] == [False] * 5
+    assert pd.isna(flags[13])  # missing iNAV -> missing flag, never False
+
+
+def test_inav_stale_in_the_built_table(snaps: pd.DataFrame) -> None:
+    assert "inav_stale" in snaps.columns
+    assert str(snaps["inav_stale"].dtype) == "boolean"
+    # one sample snapshot per source: nothing can be a run of four
+    assert not snaps["inav_stale"].fillna(False).any()
+    assert snaps.loc[snaps["inav"].isna(), "inav_stale"].isna().all()

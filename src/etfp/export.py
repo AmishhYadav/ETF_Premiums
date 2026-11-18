@@ -49,7 +49,7 @@ from etfp.timeutil import IST, now_ist
 
 logger = logging.getLogger("etfp.export")
 
-SCHEMA_VERSION = "1.6.0"
+SCHEMA_VERSION = "1.7.0"
 SCHEMA_CHANGELOG: list[dict[str, str]] = [
     {
         "version": "1.0.0",
@@ -161,6 +161,25 @@ SCHEMA_CHANGELOG: list[dict[str, str]] = [
             "rupees per one unit of the foreign currency. fv_method stays nav_only until free "
             "futures bars can be fetched; when they can, nights with a possible futures "
             "contract switch fall back to nav_only (D43)."
+        ),
+    },
+    {
+        "version": "1.7.0",
+        "date": "2026-11-18",
+        "changes": (
+            "New columns, no existing column changes meaning except valve_monthly.status_rule "
+            "vocabulary. etf_day.dq_units_stale (D51): units come from an NSE security-master "
+            "file inside a frozen stretch (5 Feb - 13 Mar 2024), so units may be weeks old. "
+            "etf_day.dq_nav_misaligned (D53): the NAV used embeds an underlying close later "
+            "than 15:30 IST on t allows (look-ahead check; 0 rows today). "
+            "inav_snapshots.inav_stale (D49): the same iNAV repeated for 4+ snapshots in a row "
+            "during market hours (Nippon feed frozen; Motilal MON100/MONQ50 iNAV is FX-only). "
+            "units_monthly.nav_date (D51): AMFI NAV date behind the AUM/NAV units. "
+            "valve_monthly (D48): monthly AUM/NAV months use a creation-basket rule (+-0.9 "
+            "basket) instead of +-1% where the basket size is known; status_rule gains *_timing "
+            "values when a month-end NAV is older than the month-end; refresh dates need 10% "
+            "of funds to change (Feb 2024 was wrongly closed for every fund). 10 domestic "
+            "controls now have creation_unit_size (D50), so their creation_units_change is filled."
         ),
     },
 ]
@@ -762,7 +781,7 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
     ),
     "units_change": _c(
         "int",
-        "Change in units outstanding seen in the security-master file(s) dated since the previous row up to this row; 0 if none; null before the first file. A change over a long file gap lands on the date of the file that showed it.",
+        "Change in units outstanding seen in the security-master file(s) dated since the previous row up to this row; 0 if none; null before the first file. A change over a long file gap lands on the date of the file that showed it. NSE refreshes IssdCptl in batches (about weekly), so the date is when the change was PUBLISHED, not when the creation or redemption happened (D33); the true date is up to the previous batch earlier. Check dq_units_stale for frozen stretches.",
         "units",
         "",
         "features/units.py",
@@ -776,7 +795,7 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
     ),
     "creation_event": _c(
         "float",
-        "Alias of creation_units_change (BLUEPRINT name).",
+        "Alias of creation_units_change (BLUEPRINT name). Dated by publication batch like units_change (D33): the row is the first one on or after the batch that showed the creation, not the day it happened.",
         "creation units",
         "= creation_units_change",
         "features/units.py",
@@ -946,6 +965,11 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
     "dq_nav_stale": _c(
         "bool", "nav_publication_lag_days above 5 or negative.", source="features/quality.py"
     ),
+    "dq_nav_misaligned": _c(
+        "bool",
+        "The underlying session inside nav_known_at_close (nav_known_underlying_date) is LATER than the latest underlying close that had happened by 15:30 IST on t according to the exchange calendars (SPEC 6.1), or nav_known_date is after t (look-ahead). A NAV older than the calendar allows is not flagged here (see dq_nav_same_date_missing, dq_nav_stale, nav_publication_lag_days). Empty when no NAV was used. D53.",
+        source="features/quality.py",
+    ),
     "dq_nav_same_date_missing": _c(
         "bool",
         "No NAV dated t in AMFI (for example Mirae on US holidays); prem_raw is empty and NAV is carried forward for alignment.",
@@ -955,6 +979,11 @@ ETF_DAY_COLUMNS: dict[str, ColumnDoc] = {
         "bool",
         "No NAV usable for the T-2 session (none dated then and none within 5 days before), so the old band base and prem_band_ref are empty.",
         source="build.py",
+    ),
+    "dq_units_stale": _c(
+        "bool",
+        "True if units_source is security_master and that file lies in a frozen stretch: NSE did not refresh IssdCptl for more than 28 days (no batch where at least 10% of funds changed, same rule as valve_monthly), e.g. every file from 2024-02-05 to 2024-03-13. The count may be out of date (HNGSNGBEES showed 14.16M while the true figure was 19.11M by 29 Feb 2024). Only a flag: units is not replaced by AMC figures. False when units came from monthly AUM/NAV or is missing.",
+        source="build.py (features/valve.py frozen_file_dates)",
     ),
     "dq_units_aum_mismatch": _c(
         "bool",

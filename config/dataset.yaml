@@ -127,8 +127,8 @@ tables:
       creation_multiple_ok, units_change_days_since_prev, turnover_nse, turnover,
       turnover_is_nse_only, feeder_units_asof, excess_rupees, ret_close_1, ret_close_5, ret_own_1,
       ret_own_5, ret_nav_1, dq_duplicate_row, dq_negative_units, dq_missing_close,
-      dq_missing_nav_known, dq_nav_stale, dq_nav_same_date_missing, dq_nav_t2_missing,
-      dq_units_aum_mismatch,
+      dq_missing_nav_known, dq_nav_stale, dq_nav_misaligned, dq_nav_same_date_missing, dq_nav_t2_missing,
+      dq_units_stale, dq_units_aum_mismatch,
     ]
     drop:
       open: "source value (D41): not republished; rebuild locally with etfp backfill + etfp build"

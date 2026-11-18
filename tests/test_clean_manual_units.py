@@ -85,3 +85,16 @@ def test_round_trip_and_registration(tmp_path: Path) -> None:
     assert store.read_table("units_monthly").iloc[0]["units"] == 15_000_000
     order = [t for t, _ in CLEANERS]
     assert order.index("units_monthly") > order.index("etf_master")
+
+
+def test_nav_date_is_optional_and_blank_by_default(tmp_path: Path) -> None:
+    out = rows(tmp_path, "MONQ50,2022-01-31,1500000000,100,,factsheet 2022-01")
+    assert out.iloc[0]["nav_date"] is None or out["nav_date"].isna().all()
+
+
+def test_typed_nav_date_is_kept(tmp_path: Path) -> None:
+    ctx = make_ctx(
+        tmp_path,
+        HEADER + ",nav_date\nMONQ50,2022-01-31,1500000000,100,,amfi,2022-01-28\n",
+    )
+    assert build(ctx).iloc[0]["nav_date"] == date(2022, 1, 28)

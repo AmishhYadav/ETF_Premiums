@@ -130,9 +130,9 @@ def test_etf_day_parquet_round_trips_with_typed_columns(exported, built) -> None
 def test_schema_json_documents_every_exported_column(exported) -> None:
     folder, *_ = exported
     schema = json.loads((folder / "schema.json").read_text())
-    assert schema["schema_version"] == SCHEMA_VERSION == "1.6.0"
+    assert schema["schema_version"] == SCHEMA_VERSION == "1.7.0"
     assert [c["version"] for c in schema["changelog"]] == [
-        "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0"
+        "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0"
     ]  # fmt: skip
     assert "MEANING CHANGE" in schema["changelog"][1]["changes"]  # 1.1.0 turnover
     for name in (p.stem for p in folder.glob("*.parquet")):
@@ -148,7 +148,7 @@ def test_schema_json_documents_every_exported_column(exported) -> None:
 def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
     folder, *_ = exported
     text = (folder / "DATA_DICTIONARY.md").read_text()
-    assert "Schema version **1.6.0**" in text
+    assert "Schema version **1.7.0**" in text
     assert "## valve_monthly" in text and "| valve_status |" in text
     assert "## etf_day" in text and "| cap_pi |" in text and "| prem_nav_known |" in text
     assert text.count("\n| ") > len(ETF_DAY_COLUMNS)
@@ -157,7 +157,7 @@ def test_data_dictionary_lists_columns_and_changelog(exported) -> None:
 def test_manifest_contents(exported) -> None:
     folder, _, _, _ = exported
     m = json.loads((folder / "manifest.json").read_text())
-    assert m["schema_version"] == "1.6.0"
+    assert m["schema_version"] == "1.7.0"
     assert m["build_time_ist"] == "2026-11-13T22:00:00+05:30"
     assert m["git"] == {"commit": "uncommitted", "dirty": True}  # the temp folder is no repo
     assert m["date_range"]["etf_day"] == {"first": "2021-01-04", "last": "2026-11-09"}

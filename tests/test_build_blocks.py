@@ -24,7 +24,7 @@ from etfp.build import (
     _Series,
     _units_block,
 )
-from etfp.features import premiums
+from etfp.features import premiums, valve
 from etfp.features import units as units_mod
 
 NY = ZoneInfo("America/New_York")
@@ -426,3 +426,46 @@ def test_split_adjusts_prices_and_the_unadjusted_prev_close_on_the_ex_date(cfg) 
     assert out["prev_close"][1] == pytest.approx(101.562)
     assert out["deliv_share"].tolist() == pytest.approx([0.5, 0.25])
     assert out["avg_trade"].tolist() == pytest.approx([5000.0, 500.0])
+
+
+def test_dq_units_stale_flags_only_security_master_rows_in_frozen_files() -> None:
+    frozen = frozenset({date(2024, 2, 12)})
+    src = pd.Series(["security_master", "security_master", "monthly_aum_nav", None])
+    fdate = pd.Series([date(2024, 2, 12), date(2024, 3, 14), None, None])
+    out = build._units_stale_flag(src, fdate, frozen)
+    assert list(out) == [True, False, False, False]
+
+
+def test_valve_nav_lag_comes_from_nav_date_and_falls_back_to_the_text(
+    cfg, tmp_path, monkeypatch
+) -> None:
+    from etfp.store import Store
+
+    um = pd.DataFrame(
+        {
+            "symbol": ["MON100", "MON100", "MON100"],
+            "month_end": [date(2022, 4, 30), date(2022, 5, 31), date(2022, 6, 30)],
+            "aum": [1.0, 1.0, 1.0],
+            "nav": [1.0, 1.0, 1.0],
+            "units": [1.0, 1.0, 1.0],
+            "source": [
+                "amc_portfolio_motilal AUM / AMFI NAV of 2022-04-29",  # old row, no nav_date
+                "typed",
+                "amc_portfolio_motilal AUM / AMFI NAV of 2022-06-27",  # nav_date wins
+            ],
+            "source_file": ["a", "b", "c"],
+            "nav_date": [None, date(2022, 5, 27), date(2022, 6, 29)],
+        }
+    )
+    store = Store(tmp_path / "clean")
+    store.write_table("units_monthly", um)
+    seen = {}
+
+    def fake(ud, umonthly, sizes, symbols):
+        seen["lag"] = list(umonthly["nav_lag_days"])
+        return pd.DataFrame(columns=valve.COLUMNS)
+
+    monkeypatch.setattr(valve, "valve_monthly", fake)
+    build.build_valve_monthly(store, cfg)
+    # 30 Apr - 29 Apr = 1 (text fallback); 31 May - 27 May = 4; 30 Jun - 29 Jun = 1 (not 3)
+    assert seen["lag"] == [1, 4, 1]

@@ -12,10 +12,14 @@ config later. Premiums are fractions (0.5 = 50 percentage points).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import logging
+from collections.abc import Mapping, Sequence
+from datetime import date
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 DQ_COLUMNS = (
     "dq_duplicate_row",
@@ -26,6 +30,7 @@ DQ_COLUMNS = (
     "dq_missing_close",
     "dq_missing_nav_known",
     "dq_nav_stale",
+    "dq_nav_misaligned",
 )
 
 
@@ -148,6 +153,149 @@ def flag_nav_stale(lag_days: pd.Series, *, max_days: int = 5, min_days: int = 0)
     return _bool(((lag > max_days) | (lag < min_days)).fillna(False), lag.isna(), lag.index)
 
 
+class DuplicateRowsError(ValueError):
+    """The analysis table has two rows for one (symbol, date): the build must stop."""
+
+
+def require_no_duplicates(df: pd.DataFrame, keys: Sequence[str] = ("symbol", "date")) -> None:
+    """Raise :class:`DuplicateRowsError` if any key appears twice (SPEC 12: fails the build).
+
+    A duplicate is not "a row to look at": every average, return and premium computed
+    over it would silently double-count. So unlike the other checks this one stops
+    the build and names the first offending keys.
+
+    Hand example: rows (A, 1 Sep), (A, 1 Sep), (B, 1 Sep) -> raises, naming (A, 1 Sep).
+    """
+    mask = flag_duplicates(df, keys)
+    if bool(mask.any()):
+        bad = df.loc[mask.astype(bool), list(keys)].drop_duplicates().head(5)
+        names = ", ".join(str(tuple(r)) for r in bad.itertuples(index=False, name=None))
+        raise DuplicateRowsError(
+            f"duplicate {tuple(keys)} rows in the analysis table (first: {names}); "
+            "fix the clean table that produced them, do not drop rows here"
+        )
+
+
+def expected_underlying_session(market: str, day: date, calendar: object | None = None) -> date:
+    """The latest underlying-market session closed by 15:30 IST (India's close) on ``day``.
+
+    This is the "a" in fair value: the NAV the Indian market can know at its close is
+    struck from this underlying close (SPEC 6.1). Computed straight from the exchange
+    calendars, independently of the NAV-alignment code, so the two can check each other.
+
+    Hand example (US): Tue 8 Sep 2026 -> 4 Sep (Labor Day Mon 7 Sep; the 8 Sep close
+    comes at ~01:30 IST on the 9th, after India has closed). Wed 9 Sep -> 8 Sep.
+    Hong Kong closes at 13:30 IST, before India, so HK on 9 Sep -> 9 Sep.
+    """
+    from etfp import calendars
+
+    cal = calendar if calendar is not None else calendars
+    india_close = cal.market_close("IN", day)  # type: ignore[attr-defined]
+    s = cal.last_session_on_or_before(market, day)  # type: ignore[attr-defined]
+    while cal.market_close(market, s) > india_close:  # type: ignore[attr-defined]
+        s = cal.previous_session(market, s)  # type: ignore[attr-defined]
+    return s
+
+
+def flag_nav_misaligned(
+    df: pd.DataFrame,
+    markets: Mapping[str, str],
+    *,
+    calendar: object | None = None,
+    include_behind: bool = False,
+    symbol_col: str = "symbol",
+    date_col: str = "date",
+    underlying_col: str = "nav_known_underlying_date",
+    known_date_col: str = "nav_known_date",
+) -> pd.Series:
+    """NAV date alignment against the calendars (SPEC 12, 6.1).
+
+    True when the NAV we used embeds an underlying close that had NOT happened yet at
+    15:30 IST on the trading day (``nav_known_underlying_date`` later than
+    ``expected_underlying_session``), or the NAV's own date is after the trading day.
+    That is look-ahead: the fair value would use information the market could not
+    have. NA when no NAV was used or the symbol's market is unknown.
+
+    A NAV BEHIND the calendar (an older session than the freshest possible) is not
+    flagged by default. It is a hole in the fund's NAV history, usually an Indian
+    holiday (funds strike no NAV on one, so the US close of that day has no NAV until
+    the next business day) or a skipped US-holiday NAV; ``dq_nav_same_date_missing``,
+    ``dq_nav_stale`` and ``nav_publication_lag_days`` already show those, and ~60 such
+    days per US fund over five years would drown real problems. Pass
+    ``include_behind=True`` to flag them too.
+
+    Hand example (US ETF, Tue 8 Sep 2026): used underlying 4 Sep -> False; used 8 Sep
+    (closes after India does) -> True; used 3 Sep -> False (behind), True with
+    ``include_behind``.
+    """
+    out = pd.Series(pd.NA, index=df.index, dtype="boolean")
+    if underlying_col not in df.columns:
+        return out
+    cache: dict[tuple[str, date], date] = {}
+    vals: list[object] = []
+    known = df[known_date_col] if known_date_col in df.columns else [None] * len(df)
+    for sym, d, a, k in zip(df[symbol_col], df[date_col], df[underlying_col], known, strict=True):
+        market = markets.get(str(sym))
+        if market is None or pd.isna(a):
+            vals.append(pd.NA)
+            continue
+        day, used = pd.Timestamp(d).date(), pd.Timestamp(a).date()
+        key = (market, day)
+        if key not in cache:
+            cache[key] = expected_underlying_session(market, day, calendar)
+        expected = cache[key]
+        bad = used > expected or (include_behind and used < expected)
+        if k is not None and not pd.isna(k) and pd.Timestamp(k).date() > day:
+            bad = True
+        vals.append(bool(bad))
+    out[:] = pd.array(vals, dtype="boolean")
+    return out
+
+
+def session_gaps(
+    df: pd.DataFrame, *, symbol_col: str = "symbol", date_col: str = "date"
+) -> dict[str, list[date]]:
+    """NSE sessions with no row for a symbol between its first and last row (SPEC 12 gaps).
+
+    A missing row means no price was collected that day, so close, NAV and every
+    premium are absent for it. The days are returned (and logged by
+    :func:`log_build_summary`), never invented or filled.
+
+    Hand example: rows on Mon, Tue, Thu with no holiday -> Wed is the gap.
+    """
+    from etfp.clean.common import find_gaps
+
+    out: dict[str, list[date]] = {}
+    for sym, grp in df.groupby(symbol_col, sort=True):
+        gaps = find_gaps([pd.Timestamp(d).date() for d in grp[date_col]])
+        if gaps:
+            out[str(sym)] = gaps
+    return out
+
+
+def log_build_summary(df: pd.DataFrame) -> dict[str, object]:
+    """Log one warning per raised dq flag and per symbol with session gaps; return the numbers.
+
+    The same counts reach the research manifest (``dq_flag_counts``,
+    ``missing_nse_sessions_by_symbol``); this is the loud line in the build log.
+    """
+    counts = {
+        c: int(df[c].fillna(False).astype(bool).sum()) for c in df.columns if c.startswith("dq_")
+    }
+    for name, n in counts.items():
+        if n:
+            logger.warning("data quality: %s is True on %d etf_day rows", name, n)
+    gaps = session_gaps(df)
+    for sym, days in gaps.items():
+        logger.warning(
+            "data quality: %s has no row on %d NSE sessions (first %s)",
+            sym,
+            len(days),
+            [d.isoformat() for d in days[:3]],
+        )
+    return {"dq_counts": counts, "session_gaps": {s: len(d) for s, d in gaps.items()}}
+
+
 def add_quality_flags(
     df: pd.DataFrame,
     *,
@@ -161,6 +309,8 @@ def add_quality_flags(
     futures_a_col: str = "fv_in_futures_a",
     extreme_threshold: float = 3.0,
     jump_points: float = 0.5,
+    markets: Mapping[str, str] | None = None,
+    calendar: object | None = None,
 ) -> pd.DataFrame:
     """Return a copy of ``df`` with the ``DQ_COLUMNS`` appended (absent input columns give NA).
 
@@ -196,6 +346,11 @@ def add_quality_flags(
     out["dq_missing_close"] = flag_missing(df[close_col]) if has(close_col) else na
     out["dq_missing_nav_known"] = flag_missing(df[nav_known_col]) if has(nav_known_col) else na
     out["dq_nav_stale"] = flag_nav_stale(df[lag_col]) if has(lag_col) else na
+    out["dq_nav_misaligned"] = (
+        flag_nav_misaligned(df, markets, calendar=calendar)
+        if markets is not None and has("symbol") and has("date")
+        else na
+    )
     return out
 
 

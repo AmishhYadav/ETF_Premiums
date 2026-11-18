@@ -33,6 +33,7 @@ from typing import Literal
 
 from etfp import calendars
 from etfp.collect import (
+    amc_portfolio,
     amfi_nav,
     bse_bhavcopy,
     fbil_refrates,
@@ -73,6 +74,7 @@ NOTICES = "notices"  # SEBI + NSE notice listings (notice reader, SPEC section 3
 IBJA = "ibja"  # IBJA gold/silver reference rates (bullion module, D35; research only, D41)
 FBIL = "fbil"  # FBIL official rupee reference rates, 31-day rolling window (D43, D45)
 SYMBOLCHANGE = "symbolchange"  # NSE symbol-change list, checked against config at build (D45)
+AMC_PORTFOLIO = "amc_portfolio"  # AMC monthly portfolio Excel files, monthly not daily (D50)
 
 DAILY_SOURCES: tuple[str, ...] = (
     BHAVCOPY,
@@ -88,6 +90,7 @@ DAILY_SOURCES: tuple[str, ...] = (
     IBJA,
     FBIL,
     SYMBOLCHANGE,
+    AMC_PORTFOLIO,
 )
 # NSE's list file and AMFI's NAVAll are "latest only" snapshots, so they cannot be backfilled.
 BACKFILL_SOURCES: tuple[str, ...] = (BHAVCOPY, UDIFF, SECMASTER, AMFI_HISTORY, YAHOO, BSE, SLB)
@@ -105,6 +108,8 @@ SOURCE_HELP = {
     IBJA: "IBJA gold/silver reference rates page (latest snapshot only; research use only)",
     FBIL: "FBIL rupee reference rates, the 31 days ending on the run day (one request)",
     SYMBOLCHANGE: "NSE symbol-change list (latest snapshot only; build checks it against config)",
+    AMC_PORTFOLIO: "AMC monthly portfolio files (Motilal, Mirae, Nippon): only new ones, on the "
+    "first run on or after the 10th of a month",
 }
 
 NSE_HOST = "nseindia.com"
@@ -263,7 +268,9 @@ def _amfi_history_unit(start: date, end: date) -> Unit:
     )
 
 
-def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
+def plan_daily(
+    day: date, sources: Sequence[str], *, now: datetime, store: RawStore | None = None
+) -> Plan:
     """What `etfp collect daily --date <day>` should download.
 
     * NSE files: one per source for `day` (the caller has already checked it is a session).
@@ -276,6 +283,8 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
       morning, it holds t's. Saved under `day`; downstream cleaning keeps the newest copy
       of a (scheme, nav_date) pair.
     * Yahoo: four symbols, if Yahoo still holds the day.
+    * AMC portfolios: monthly, not daily (``amc_portfolio_due``); needs ``store`` to know
+      what is already there, so without a store it plans nothing.
     """
     require_aware(now, "now")
     today = now.astimezone(IST).date()
@@ -402,9 +411,132 @@ def plan_daily(day: date, sources: Sequence[str], *, now: datetime) -> Plan:
                     f"{nse_symbolchange.SOURCE} {day.isoformat()}: skipped, the list only "
                     "exists as today's latest version; run this on the day itself"
                 )
+        elif key == AMC_PORTFOLIO:
+            if day != today:
+                notes.append(
+                    f"{AMC_PORTFOLIO} {day.isoformat()}: skipped, the AMC pages only show the "
+                    "latest files; run this on the day itself (or use `etfp collect amc-portfolio`)"
+                )
+            elif store is not None and amc_portfolio_due(day, store):
+                units += _amc_portfolio_units(day)
         else:
             raise ValueError(f"unknown source {key!r}")
     return Plan(units, notes)
+
+
+# AMC monthly portfolios (D46, D50). The AMCs publish a month's files from about the 8th to
+# the 10th of the next month, so a daily run only looks on/after the 10th. A look costs a few
+# listing requests (Mirae's listing is big); it is repeated every few days only while no new
+# file has arrived (an AMC that is late), and stops for the month once a file is saved.
+AMC_PORTFOLIO_FROM_DAY = 10
+AMC_PORTFOLIO_RETRY_DAYS = 3
+_AMC_PORTFOLIO_NOT_DATA = ("listing_", "portfolio_page")  # listings/pages saved by every look
+
+
+def amc_portfolio_due(day: date, store: RawStore) -> bool:
+    """Is it time to look for new AMC portfolio files?
+
+    Yes when ``day`` is on/after the 10th AND no portfolio file (not a listing) was saved on a
+    run day from the 10th of this month, AND no look (listing) happened in the last
+    ``AMC_PORTFOLIO_RETRY_DAYS`` days. Read from the raw manifest, so it needs no extra state.
+    """
+    if day.day < AMC_PORTFOLIO_FROM_DAY:
+        return False
+    window_start = day.replace(day=AMC_PORTFOLIO_FROM_DAY)
+    last_look: date | None = None
+    for entry in store.iter_manifest():
+        if not str(entry.get("source", "")).startswith("amc_portfolio_"):
+            continue
+        if entry.get("status_code") != 200:
+            continue
+        entry_day = date.fromisoformat(entry["day"])
+        if entry_day > day:
+            continue
+        if str(entry["name"]).startswith(_AMC_PORTFOLIO_NOT_DATA):
+            last_look = entry_day if last_look is None else max(last_look, entry_day)
+        elif entry_day >= window_start:
+            return False  # a file already arrived this month
+    return last_look is None or (day - last_look).days >= AMC_PORTFOLIO_RETRY_DAYS
+
+
+def _amc_portfolio_fetcher(amc: str, day: date) -> Fetcher:
+    """List one AMC's files for last month and this month; download the ones not stored.
+
+    Returns a record (a newly saved file, else the listing saved by this look) so the runner
+    can report it. Any failed download makes the whole unit fail loudly (source and URL named).
+    """
+    first = day.replace(day=1) - timedelta(days=1)  # any day of last month
+    first = first.replace(day=1)
+
+    def fetch(client: PoliteClient, store: RawStore) -> RawRecord:
+        source = amc_portfolio.SOURCES[amc]
+        outcomes = amc_portfolio.fetch(client, store, day, amc, first=first, last=day)
+        failed = [o for o in outcomes if o.status == "failed"]
+        if failed:
+            raise SourceError(
+                f"{source}: {len(failed)} of {len(outcomes)} file(s) failed, first: "
+                f"{failed[0].ref.url}: {failed[0].detail}",
+                source=source,
+                day=day,
+                url=failed[0].ref.url,
+            )
+        for o in outcomes:
+            if o.status == "fetched" and o.record is not None:
+                return o.record
+        return _latest_record(store, source, day)  # nothing new: report this look's listing
+
+    return fetch
+
+
+def _latest_record(store: RawStore, source: str, day: date) -> RawRecord:
+    """The newest manifest entry of ``source`` saved on ``day`` (the listing of this look)."""
+    last: dict | None = None
+    for entry in store.iter_manifest():
+        if entry.get("source") == source and entry.get("day") == day.isoformat():
+            last = entry
+    if last is None:
+        raise SourceError(
+            f"{source}: the listing of {day.isoformat()} is not in the raw manifest",
+            source=source,
+            day=day,
+            url="",
+        )
+    return RawRecord(
+        source=source,
+        day=day,
+        name=str(last["name"]),
+        path=store.root / str(last["relpath"]),
+        relpath=str(last["relpath"]),
+        sha256=str(last["sha256"]),
+        size_bytes=int(last["size_bytes"]),
+        url=str(last["url"]),
+        status_code=int(last["status_code"]),
+        fetched_at=datetime.fromisoformat(str(last["fetched_at"])),
+        version=int(last.get("version", 1)),
+        duplicate=bool(last.get("duplicate", False)),
+    )
+
+
+_AMC_PORTFOLIO_HOSTS = {
+    "motilal": amc_portfolio.MOTILAL_HOST,
+    "mirae": amc_portfolio.MIRAE_HOST,
+    "nippon": amc_portfolio.NIPPON_HOST,
+}
+
+
+def _amc_portfolio_units(day: date) -> list[Unit]:
+    """One unit per AMC. The name is a label only: it never exists as a file, so the runner
+    always runs the unit (the planner has already decided it is due)."""
+    return [
+        Unit(
+            source=amc_portfolio.SOURCES[amc],
+            day=day,
+            name="monthly_portfolio_files",
+            host=_AMC_PORTFOLIO_HOSTS[amc],
+            fetch=_amc_portfolio_fetcher(amc, day),
+        )
+        for amc in amc_portfolio.AMCS
+    ]
 
 
 # Notices: each daily run asks for the last 7 days, so a missed run or a long weekend

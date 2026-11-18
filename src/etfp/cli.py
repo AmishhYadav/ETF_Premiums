@@ -34,6 +34,8 @@ app.add_typer(collect_app, name="collect")
 app.add_typer(ops_app, name="ops")
 app.add_typer(export_app, name="export")
 app.add_typer(run_app, name="run")
+bloomberg_app = typer.Typer(help="Check Bloomberg exports dropped in data/raw/bloomberg/.")
+app.add_typer(bloomberg_app, name="bloomberg")
 
 EXIT_USAGE = 2
 EXIT_LOCKED = 3  # another recorder / another `run daily` holds the lock
@@ -95,7 +97,10 @@ _BULK_TIMEOUT_S = 120.0
 
 def _build_bulk_client(settings: CollectSettings) -> PoliteClient:
     return PoliteClient(
-        min_interval_s={"nseindia.com": settings.http.nse_min_interval_s},
+        min_interval_s={
+            **jobs.amc_portfolio.POLITE_INTERVALS,  # AMC download pages: >= 2 s apart (D50)
+            "nseindia.com": settings.http.nse_min_interval_s,
+        },
         default_interval_s=settings.http.default_interval_s,
         max_retries=settings.http.max_retries,
         timeout_s=_BULK_TIMEOUT_S,
@@ -443,11 +448,11 @@ def collect_daily(
         )
         return
     _configure_logging()
-    plan = jobs.plan_daily(day, chosen, now=now)
+    store = RawStore(paths.raw_dir())
+    plan = jobs.plan_daily(day, chosen, now=now, store=store)
     for note in plan.notes:
         typer.echo(f"NOTE        {note}")
     settings = load_collect_settings()
-    store = RawStore(paths.raw_dir())
     with _build_bulk_client(settings) as client:
         outcomes = jobs.run_units(
             plan.units,
@@ -717,7 +722,7 @@ def _collect_step(day: date, phase: ops.Phase) -> ops.StepReport:
 
     with _build_bulk_client(settings) as client:
         for sources, force in passes:
-            plan = jobs.plan_daily(day, sources, now=now)
+            plan = jobs.plan_daily(day, sources, now=now, store=store)
             for note in plan.notes:
                 typer.echo(f"NOTE        {note}")
             outcomes += jobs.run_units(
@@ -1106,6 +1111,68 @@ def amc_portfolio_crosscheck(
         return
     pd.set_option("display.width", 200)
     typer.echo(table.to_string(index=False, float_format=lambda v: f"{v:,.2f}"))
+
+
+@bloomberg_app.command("check")
+def bloomberg_check(
+    start: Annotated[
+        str | None, typer.Option("--from", help="First day to check (YYYY-MM-DD)")
+    ] = None,
+    end: Annotated[str | None, typer.Option("--to", help="Last day to check (YYYY-MM-DD)")] = None,
+) -> None:
+    """Validate every CSV in data/raw/bloomberg/ and say what the build will be able to use.
+
+    Reads only. Stops with file and line on a malformed file; lists missing trading days for
+    the fair-value series, missing 1-minute bars and missing China ETF rows. Exit 1 if any.
+    """
+    from etfp.collect import bloomberg
+    from etfp.config import load_etfs
+
+    _configure_logging()
+    try:
+        imported = bloomberg.import_directory(on_conflict="latest")
+    except bloomberg.BloombergImportError as exc:
+        typer.echo(f"BLOOMBERG IMPORT FAILED: {exc}", err=True)
+        raise typer.Exit(1) from None
+    lines, problems = bloomberg.describe_import(
+        imported,
+        load_etfs(),
+        date.fromisoformat(start) if start else None,
+        date.fromisoformat(end) if end else None,
+    )
+    for line in lines:
+        typer.echo(line)
+    for problem in problems:
+        typer.echo(f"PROBLEM {problem}", err=True)
+    typer.echo("ok" if not problems else f"{len(problems)} problem(s)")
+    if problems:
+        raise typer.Exit(1)
+
+
+@bloomberg_app.command("report")
+def bloomberg_report() -> None:
+    """After `etfp build`: how much Bloomberg data reached the clean tables."""
+    import etfp.build  # noqa: F401  (registers the clean-table schemas the store needs)
+    from etfp.collect import bloomberg
+    from etfp.store import Store
+
+    store = Store()
+    tables = {}
+    for name in ("etf_day", "limit_day", "china_etf_daily"):
+        if not store.has_table(name):
+            typer.echo(f"table {name} is missing: run `etfp build` first", err=True)
+            raise typer.Exit(1)
+        tables[name] = store.read_table(name)
+    lines, warns = bloomberg.build_report(
+        tables["etf_day"], tables["limit_day"], tables["china_etf_daily"]
+    )
+    for line in lines:
+        typer.echo(line)
+    for warn in warns:
+        typer.echo(f"WARNING {warn}", err=True)
+    typer.echo("ok" if not warns else f"{len(warns)} warning(s)")
+    if warns:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

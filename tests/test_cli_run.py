@@ -246,7 +246,7 @@ class Recorder:
         self.catch_up_units: list[jobs.Unit] = []
         self.network_down = False
 
-    def plan_daily(self, day: date, sources: list[str], *, now: datetime) -> jobs.Plan:
+    def plan_daily(self, day: date, sources: list[str], *, now: datetime, store=None) -> jobs.Plan:
         self.plans.append((day, list(sources)))
         units = [
             jobs.Unit(s, day, f"{s}.csv", "example.test", fetch=lambda c, st: None)  # type: ignore[arg-type,return-value]

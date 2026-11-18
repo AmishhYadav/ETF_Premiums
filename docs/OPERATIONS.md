@@ -35,7 +35,8 @@ NAVs.
 1. **collect**: evening downloads every source `etfp collect daily` knows (NSE bhavcopy, UDiFF,
    security master, ETF list, AMFI NAVAll and history, Yahoo, BSE, SLB, notices, IBJA, and
    since 18 Nov 2026 FBIL rupee rates (one request for the 31 days ending on the run day) and
-   NSE's symbol-change list). Morning does two things for the
+   NSE's symbol-change list; and, on the first run on or after the 10th of each month, the
+   AMCs' new monthly portfolio files, see below). Morning does two things for the
    *previous session*: fills any gap left by the evening run (files already stored are
    skipped, so this costs almost nothing), and downloads the AMFI history window again with
    force. The new copy is stored beside the old one as `.v2`; the build uses the newest.
@@ -235,10 +236,21 @@ uv run etfp build
 uv run etfp run daily --date 2026-11-12 --no-alerts
 ```
 
+AMC monthly portfolio files (`amc_portfolio`, since 18 Nov 2026): the three fund houses
+(Motilal, Mirae, Nippon) publish a month's portfolios from about the 8th to the 10th of the
+next month. A daily run looks only on or after the 10th, and only once a month: it lists last
+month's and this month's files and downloads those not already in the raw store (matched by
+URL). If no file has arrived yet (an AMC is late) it looks again every 3 days until one does,
+then stops for the month; nothing to remember, it reads `data/raw/_manifest.jsonl`. The first
+run on a day before the 10th prints nothing about it. It is never part of the catch-up or a
+backfill; for history use `etfp collect amc-portfolio --from ...`. The three sites are asked
+at least 2 s apart; a block (403/429) stops that site for the run.
+
 Limits of a past date:
 
 * The NSE ETF list, AMFI NAVAll and NSE symbol-change list only exist as "today's latest
-  file", so they are skipped for any day but today (the output says so). FBIL is asked for
+  file", so they are skipped for any day but today (the output says so; AMC portfolios too).
+  FBIL is asked for
   the 31 days ending on the date you give. The AMFI history window covers past dates.
 * Yahoo keeps only about 59 days of 5-minute bars (D22). Older days cannot be recovered.
 * If you re-run a date whose alerts were already sent, nothing is sent twice (alerts remember

@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
+import numpy as np
 import pandas as pd
 
 from etfp import calendars
@@ -361,14 +362,16 @@ def series_at(
     tz: str,
     local_time: time | None = None,
     not_before: time | None = None,
+    not_after: time | None = None,
 ) -> pd.Series:
     """One value per local date for an instrument/field, indexed by python ``date`` in ``tz``.
 
     * ``local_time`` given: the observation stamped exactly that clock time in ``tz``
       (for example ``time(15, 30)`` in ``Asia/Kolkata`` for "price at the Indian close").
     * ``local_time`` None: the LAST observation of each local date, considering only rows
-      stamped at or after ``not_before`` when that is given. Beware: a row exported in another
-      zone is converted, so a 15:30 IST row lands on the same New York date at 06:00. Use
+      stamped at or after ``not_before`` (and at or before ``not_after``) when given. Beware:
+      a row exported in another zone is converted, so a 15:30 IST row lands on the same New York
+      date at 06:00. Use
       ``local_time`` (the real close, 16:00 New York) when you need THE close.
 
     These Series feed ``fair_value_frame``: ``futures_t`` = ``series_at(NQ1, tz=IST, 15:30)``
@@ -384,10 +387,14 @@ def series_at(
     work["d"] = [t.date() for t in work["ts"]]
     if local_time is not None:
         want = local_time.replace(second=0, microsecond=0)
-        work = work[[t.time().replace(second=0, microsecond=0) == want for t in work["ts"]]]
+        keep = [t.time().replace(second=0, microsecond=0) == want for t in work["ts"]]
+        work = work[np.array(keep, dtype=bool)]
     else:
         if not_before is not None:
-            work = work[[t.time() >= not_before for t in work["ts"]]]
+            # np.array(..., dtype=bool): a plain empty list would select NO columns.
+            work = work[np.array([t.time() >= not_before for t in work["ts"]], dtype=bool)]
+        if not_after is not None:
+            work = work[np.array([t.time() <= not_after for t in work["ts"]], dtype=bool)]
         work = work.sort_values("ts").groupby("d", sort=True).tail(1)
     out = pd.Series(work["value"].to_numpy(), index=pd.Index(work["d"], name="date"))
     out.name = f"{instrument}.{field}"
@@ -471,6 +478,7 @@ class Requirement:
     tz: str
     local_time: time | None = None
     not_before: time | None = None
+    not_after: time | None = None
 
 
 @dataclass(frozen=True)
@@ -482,6 +490,8 @@ class CoverageGap:
         r = self.requirement
         if r.local_time:
             when = f"at {r.local_time:%H:%M} {r.tz}"
+        elif r.not_before and r.not_after:
+            when = f"on the {r.tz} date, stamped {r.not_before:%H:%M}-{r.not_after:%H:%M}"
         elif r.not_before:
             when = f"on the {r.tz} date, at or after {r.not_before:%H:%M}"
         else:
@@ -512,12 +522,21 @@ def default_requirements(universe: Any) -> list[Requirement]:
                 reqs[Requirement(fut, "PX_LAST", "IN", "Asia/Kolkata", ist_1530)] = None
                 reqs[Requirement(fut, "PX_LAST", "US", "America/New_York", None, us_close)] = None
             reqs[Requirement("USDINR", "PX_LAST", "IN", "Asia/Kolkata", ist_1530)] = None
-            # NAV-time rate: the time each fund house uses is not verified yet (D10), so this
-            # only checks that SOME USD/INR row is dated on each US session. Tighten later.
-            reqs[Requirement("USDINR", "PX_LAST", "US", "America/New_York")] = None
+            # NAV-time rate (D52): the build reads the LAST rate between the US open and one hour
+            # after the US close. A 15:30 IST row (06:00 New York) is outside that window, so
+            # require a row inside it; otherwise the build silently falls back to NAV only.
+            reqs[
+                Requirement(
+                    "USDINR", "PX_LAST", "US", "America/New_York", None, time(9, 30), time(17, 0)
+                )
+            ] = None
         elif etf.underlying_market == "HK":
             reqs[Requirement("HKDINR", "PX_LAST", "IN", "Asia/Kolkata", ist_1530)] = None
-            reqs[Requirement("HKDINR", "PX_LAST", "HK", "Asia/Hong_Kong")] = None
+            reqs[
+                Requirement(
+                    "HKDINR", "PX_LAST", "HK", "Asia/Hong_Kong", None, time(9, 30), time(17, 0)
+                )
+            ] = None
     return list(reqs)
 
 
@@ -540,6 +559,7 @@ def check_coverage(
                 tz=req.tz,
                 local_time=req.local_time,
                 not_before=req.not_before,
+                not_after=req.not_after,
             ).index
         )
         expected = cal.sessions(req.market, start, end)
@@ -564,3 +584,106 @@ def assert_coverage(
             f"Bloomberg data does not cover {start}..{end}:\n"
             + "\n".join(f"- {g.describe()}" for g in gaps)
         )
+
+
+# --------------------------------------------------------------------------
+# One-screen health check of a drop folder (used by `etfp bloomberg check`)
+# --------------------------------------------------------------------------
+def describe_import(
+    imported: BloombergImport,
+    universe: Any,
+    start: date | None = None,
+    end: date | None = None,
+) -> tuple[list[str], list[str]]:
+    """Plain-words summary of an import and a list of problems (empty list = all good).
+
+    Checks what the build will need: fair-value series on every trading day of the range
+    (``default_requirements``), 1-minute bars per ETF, and China ETF fields. ``start`` / ``end``
+    default to the dates found in the files. Nothing is written.
+    """
+    frame = imported.frame
+    lines: list[str] = []
+    problems: list[str] = []
+    if frame.empty:
+        return ["no Bloomberg rows found"], ["no Bloomberg CSV files imported"]
+    lines.append(
+        f"files: {len(imported.files)}, rows: {len(frame)}, replaced: {imported.superseded_rows}"
+    )
+    lines.append(f"dates: {frame['date'].min()} .. {frame['date'].max()}")
+    for name, grp in frame.groupby("instrument", sort=True):
+        fields = ",".join(sorted(grp["field"].unique()))
+        lines.append(
+            f"  {name:<14} {len(grp):>8} rows  {grp['date'].min()}..{grp['date'].max()}  [{fields}]"
+        )
+    # Default range: the days the fair-value series span (not the China ETFs or minute bars).
+    needed = {r.instrument for r in default_requirements(universe)}
+    fv_dates = frame.loc[frame["instrument"].isin(needed), "date"]
+    if fv_dates.empty and (start is None or end is None):
+        problems.append("no fair-value rows (NQ1, ES1, USDINR, HKDINR)")
+    else:
+        lo = start or min(fv_dates)
+        hi = end or max(fv_dates)
+        for gap in check_coverage(frame, default_requirements(universe), lo, hi):
+            problems.append(gap.describe())
+    for etf in universe.tracked():
+        bars = etf_minute_bars(frame, etf.symbol)
+        if etf.underlying_market in ("US", "HK") and bars.empty:
+            lines.append(f"  minute bars {etf.symbol}: none (only needed for limit days, R13)")
+        elif len(bars):
+            days = bars["ts_ist"].dt.date.nunique()
+            lines.append(f"  minute bars {etf.symbol}: {len(bars)} bars on {days} day(s)")
+            clock = bars["ts_ist"].dt.time
+            outside = int(((clock < time(9, 15)) | (clock > time(15, 29))).sum())
+            if outside:
+                problems.append(
+                    f"{etf.symbol}: {outside} minute bar(s) stamped outside 09:15-15:29 IST; "
+                    "the terminal time zone is probably wrong (docs/BLOOMBERG_SESSION.md)"
+                )
+    china = sorted({i for i in frame["instrument"].unique() if re.fullmatch(r"\d{6} CH", i)})
+    if not china:
+        problems.append("no China ETF rows (instrument like '513100 CH')")
+    return lines, problems
+
+
+def build_report(
+    etf_day: pd.DataFrame, limit_day: pd.DataFrame, china: pd.DataFrame
+) -> tuple[list[str], list[str]]:
+    """After a build: how much of the Bloomberg data reached the clean tables (lines, warnings).
+
+    Warnings are empty when every check passes: some US/HK ETF-days have ``fv_method ==
+    'bloomberg'``, the US ETFs have a 250-date beta, limit days that have bars say
+    ``bloomberg_1m``, and the China table is filled.
+    """
+    lines: list[str] = []
+    warns: list[str] = []
+    intl = etf_day[etf_day["underlying_market"].isin(["US", "HK"])]
+    for symbol, grp in intl.groupby("symbol", sort=True):
+        counts = grp["fv_method"].value_counts()
+        n_bbg = int(counts.get("bloomberg", 0))
+        lines.append(
+            f"  {symbol:<11} fv_method: " + ", ".join(f"{k}={int(v)}" for k, v in counts.items())
+        )
+        if n_bbg == 0:
+            warns.append(f"{symbol}: no day has fv_method 'bloomberg'")
+        has_future = grp["fv_beta_method"].eq("beta_scaled").any()
+        if has_future:
+            n = grp["fv_beta_n"].dropna()
+            last_beta = grp["fv_beta_value"].dropna().iloc[-1]
+            lines.append(f"  {symbol:<11} beta {last_beta:.3f} on {int(n.iloc[-1])} NAV dates")
+            if int(n.iloc[-1]) != 250:
+                warns.append(f"{symbol}: beta uses {int(n.iloc[-1])} NAV dates, expected 250")
+        elif grp["fv_beta_method"].eq("no_futures_term").any():
+            lines.append(f"  {symbol:<11} no futures term (Hong Kong): no beta by design")
+        else:
+            warns.append(f"{symbol}: beta not computed")
+    if len(limit_day):
+        counts = limit_day["obs_source"].value_counts()
+        lines.append(
+            "  limit_day obs_source: " + ", ".join(f"{k}={int(v)}" for k, v in counts.items())
+        )
+        if not counts.get("bloomberg_1m", 0):
+            warns.append("no limit_day row uses bloomberg_1m (minute bars missing or mis-stamped)")
+    lines.append(f"  china_etf_daily rows: {len(china)}")
+    if china.empty:
+        warns.append("china_etf_daily is empty")
+    return lines, warns

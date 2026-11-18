@@ -28,15 +28,13 @@ import logging
 
 import pandas as pd
 
+from etfp.clean import _amfi
 from etfp.clean.common import (
     CleanContext,
     RawFile,
     apply_corporate_actions,
     find_gaps,
-    list_raw_files,
-    parse_file,
 )
-from etfp.collect import amfi_nav
 
 logger = logging.getLogger("etfp.clean")
 
@@ -51,14 +49,7 @@ _RANK = {"history": 0, "navall": 1}
 def build(ctx: CleanContext) -> pd.DataFrame:
     """Build the nav_daily table from every AMFI file in the raw store."""
     by_code = {e.amfi_scheme_code: e for e in ctx.universe.etfs}
-    frames = []
-    for source, kind, parser in (
-        (amfi_nav.SOURCE_HISTORY, "history", amfi_nav.parse_history),
-        (amfi_nav.SOURCE_NAVALL, "navall", amfi_nav.parse_navall),
-    ):
-        for rf in list_raw_files(ctx.raw_root, source):
-            frame = parse_file(TABLE, rf, lambda b, rf=rf, p=parser: p(b, source_file=rf.relpath))
-            frames.append(_select(frame, rf, kind, by_code))
+    frames = [_select(frame, rf, kind, by_code) for rf, kind, frame in _amfi.load(ctx, TABLE)]
 
     if not frames:
         return pd.DataFrame({c: [] for c in COLUMNS})

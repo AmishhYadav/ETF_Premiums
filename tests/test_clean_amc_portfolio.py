@@ -92,6 +92,7 @@ def test_units_are_aum_over_the_amfi_nav(tmp_path: Path) -> None:
     assert r["nav"] == 284.8257 and r["aum"] == pytest.approx(143_590_507_000)
     assert r["units"] == pytest.approx(504_134_658.49, abs=0.01)
     assert "AMFI NAV of 2026-09-30" in r["source"]
+    assert r["nav_date"] == date(2026, 9, 30)  # explicit column (D51), same as the text
     assert r["source_file"].endswith("September_2026.xlsx#YO03")
     # the feeder's share of the ETF
     fof = cap.fof_rows(ctx).iloc[0]

@@ -12,7 +12,9 @@ AUM date), so ``units`` is not a whole number.
 
 File ``data/manual/units_monthly.csv``. Columns: symbol, month_end (last day of the
 month), aum (rupees, NOT crores), nav (rupees), units (blank = aum / nav),
-source (where the figures came from, e.g. "amfi", "factsheet 2022-01").
+source (where the figures came from, e.g. "amfi", "factsheet 2022-01"), and optionally
+nav_date (the date the NAV is struck on, YYYY-MM-DD; leave blank if unknown or if ``units``
+was typed directly). Automatic rows always fill it (D51).
 If all of aum, nav and units are given they must agree within 1%.
 
 Months with no typed row are filled automatically from the fund houses' monthly portfolio
@@ -33,7 +35,7 @@ logger = logging.getLogger("etfp.clean")
 
 TABLE = "units_monthly"
 FILENAME = "units_monthly.csv"
-COLUMNS = ["symbol", "month_end", "aum", "nav", "units", "source", "source_file"]
+COLUMNS = ["symbol", "month_end", "aum", "nav", "units", "source", "source_file", "nav_date"]
 AGREE_TOLERANCE = 0.01  # typed units vs aum/nav: 1%
 
 
@@ -68,6 +70,7 @@ def _parse_row(row: Row, known: set[str]) -> dict[str, object]:
         "units": units,
         "source": source,
         "source_file": row.source_file,
+        "nav_date": row.get_date("nav_date"),
     }
 
 
@@ -78,7 +81,7 @@ def build(ctx: CleanContext) -> pd.DataFrame:
         FILENAME,
         TABLE,
         required=["symbol", "month_end", "source"],
-        optional=["aum", "nav", "units"],
+        optional=["aum", "nav", "units", "nav_date"],
     )
     if not rows:
         return amc_portfolio.merge_units(ctx, concat_frames([], COLUMNS))

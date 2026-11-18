@@ -121,3 +121,101 @@ def test_add_quality_flags_adds_all_columns_and_keeps_rows() -> None:
 def test_add_quality_flags_with_absent_columns_gives_null_flags() -> None:
     out = q.add_quality_flags(pd.DataFrame({"x": [1, 2]}))
     assert out["dq_negative_units"].isna().all() and out["dq_prem_fv_jump"].isna().all()
+
+
+# ---------------------------------------------------------------------------
+# D53: duplicates stop the build, NAV alignment against calendars, gaps, summary
+# ---------------------------------------------------------------------------
+def test_require_no_duplicates_raises_and_names_the_key() -> None:
+    ok = pd.DataFrame({"symbol": ["A", "B"], "date": [date(2026, 9, 1)] * 2})
+    q.require_no_duplicates(ok)  # no error
+    bad = pd.DataFrame({"symbol": ["A", "A", "B"], "date": [date(2026, 9, 1)] * 3})
+    with pytest.raises(q.DuplicateRowsError, match="A"):
+        q.require_no_duplicates(bad)
+
+
+def test_expected_underlying_session_by_hand() -> None:
+    # US: Tue 8 Sep 2026 -> Fri 4 Sep (Labor Day Mon 7 Sep; the 8 Sep close is ~01:30 IST on
+    # the 9th, after India closed). Wed 9 Sep -> 8 Sep.
+    assert q.expected_underlying_session("US", date(2026, 9, 8)) == date(2026, 9, 4)
+    assert q.expected_underlying_session("US", date(2026, 9, 9)) == date(2026, 9, 8)
+    # Mon 7 Sep (US holiday, India open): Friday's close.
+    assert q.expected_underlying_session("US", date(2026, 9, 7)) == date(2026, 9, 4)
+    # Hong Kong closes 13:30 IST, before India: the same day. India itself: the same day.
+    assert q.expected_underlying_session("HK", date(2026, 9, 9)) == date(2026, 9, 9)
+    assert q.expected_underlying_session("IN", date(2026, 9, 9)) == date(2026, 9, 9)
+
+
+def _align_frame(rows: list[tuple[str, date, date | None]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "symbol": [r[0] for r in rows],
+            "date": [r[1] for r in rows],
+            "nav_known_underlying_date": [r[2] for r in rows],
+            "nav_known_date": [r[2] for r in rows],
+        }
+    )
+
+
+def test_nav_misaligned_flags_look_ahead_only_by_default() -> None:
+    d = date(2026, 9, 8)  # Tue; expected US underlying session 4 Sep
+    df = _align_frame(
+        [
+            ("US1", d, date(2026, 9, 4)),  # exactly right -> False
+            ("US1", d, date(2026, 9, 8)),  # that close happens after India closes -> True
+            ("US1", d, date(2026, 9, 3)),  # a session behind -> False by default
+            ("US1", d, None),  # no NAV used -> NA
+            ("XX", d, date(2026, 9, 4)),  # unknown market -> NA
+        ]
+    )
+    mk = {"US1": "US"}
+    assert flags(q.flag_nav_misaligned(df, mk)) == [False, True, False, None, None]
+    assert flags(q.flag_nav_misaligned(df, mk, include_behind=True)) == [
+        False,
+        True,
+        True,
+        None,
+        None,
+    ]
+
+
+def test_nav_misaligned_flags_nav_dated_after_the_day() -> None:
+    df = _align_frame([("US1", date(2026, 9, 8), date(2026, 9, 4))])
+    df["nav_known_date"] = date(2026, 9, 9)  # a NAV dated tomorrow: look-ahead
+    assert flags(q.flag_nav_misaligned(df, {"US1": "US"})) == [True]
+
+
+def test_session_gaps_lists_missing_nse_sessions() -> None:
+    # Tue 1, Wed 2 and Fri 4 Sep 2026 present; Thu 3 Sep is an NSE session with no row.
+    df = pd.DataFrame(
+        {"symbol": ["A", "A", "A", "B"], "date": [date(2026, 9, d) for d in (1, 2, 4, 1)]}
+    )
+    assert q.session_gaps(df) == {"A": [date(2026, 9, 3)]}
+
+
+def test_build_summary_counts_every_dq_column(caplog: pytest.LogCaptureFixture) -> None:
+    df = pd.DataFrame(
+        {
+            "symbol": ["A", "A"],
+            "date": [date(2026, 9, 1), date(2026, 9, 3)],  # 2 Sep missing
+            "dq_prem_fv_jump": pd.array([True, False], dtype="boolean"),
+            "dq_new_future_flag": pd.array([pd.NA, True], dtype="boolean"),
+        }
+    )
+    with caplog.at_level("WARNING"):
+        out = q.log_build_summary(df)
+    assert out["dq_counts"] == {"dq_prem_fv_jump": 1, "dq_new_future_flag": 1}
+    assert out["session_gaps"] == {"A": 1}
+    assert "dq_prem_fv_jump" in caplog.text and "no row on 1 NSE sessions" in caplog.text
+
+
+def test_add_quality_flags_appends_nav_misaligned_when_markets_given() -> None:
+    df = _align_frame([("US1", date(2026, 9, 8), date(2026, 9, 8))])
+    assert flags(q.add_quality_flags(df, markets={"US1": "US"})["dq_nav_misaligned"]) == [True]
+    assert flags(q.add_quality_flags(df)["dq_nav_misaligned"]) == [None]  # no markets: unchecked
+
+
+def test_every_quality_column_is_documented_for_the_export() -> None:
+    from etfp.export import ETF_DAY_COLUMNS
+
+    assert set(q.DQ_COLUMNS) <= set(ETF_DAY_COLUMNS)

@@ -35,8 +35,18 @@ inav_premium_cross:
   enabled: true
   levels_pct: [25, 50, 100]
   # Which source's iNAV to trust, in order of preference. amc_nippon is left out
-  # on purpose: its numbers are untrusted (DECISIONS D15).
-  inav_sources: [amc_motilal, amc_mirae, nse_quote]
+  # on purpose: its feed is frozen (one value per ETF for the whole of 16-17 Nov 2026,
+  # DECISIONS D49). amc_mirae is first: it is the only fund-house feed seen marking
+  # the underlying market. Motilal comes after it (domestic ETF MOM100 only, see below).
+  inav_sources: [amc_mirae, amc_motilal, nse_quote]
+  # Motilal's iNAV for its US-index ETFs is "previous NAV x rupee move" only; it does
+  # not follow the US market (D49). A premium over it is a premium over a stale
+  # number, so it is dropped for these two. Until the NSE quote capture gives an
+  # iNAV (nse_quote), MON100 and MONQ50 therefore have no intraday iNAV alert.
+  inav_excluded:
+    amc_motilal: [MON100, MONQ50]
+  # Also drop any iNAV row the clean table flags inav_stale (same value 4+ ticks running).
+  skip_stale: true
   # A price and an iNAV are paired only if their fetch times are this close.
   max_pair_gap_minutes: 10
 
