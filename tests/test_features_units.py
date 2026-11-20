@@ -250,7 +250,15 @@ def test_rows_before_the_first_step_have_no_size() -> None:
 def test_real_config_histories_are_ordered_and_end_at_current_size() -> None:
     universe = load_etfs()
     hist = u.creation_unit_histories(universe)
-    assert set(hist) == {"HDFCNIFTY", "NIFTY1"}
+    assert set(hist) == {
+        "HDFCNIFTY",
+        "NIFTY1",
+        "NIFTYBEES",
+        "JUNIORBEES",
+        "BANKBEES",
+        "GOLDBEES",
+        "SILVERBEES",
+    }
     sizes = u.creation_unit_sizes(universe)
     for sym, steps in hist.items():
         assert [d for d, _ in steps] == sorted(d for d, _ in steps)

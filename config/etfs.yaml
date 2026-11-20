@@ -14,7 +14,7 @@
 #   creation_unit_history  optional dated steps [{size, from, source}], oldest first; the
 #                 last step must equal creation_unit_size. The size in force on a date is
 #                 the last step with from <= date (features/units.py); before the first
-#                 step the size is unknown. Used for HDFCNIFTY and NIFTY1 (D54).
+#                 step the size is unknown. Used for HDFCNIFTY, NIFTY1 (D54), NIFTYBEES, JUNIORBEES, BANKBEES, GOLDBEES, SILVERBEES (D58).
 #   verify        names of fields not yet confirmed against a primary source.
 #   former_symbols  earlier NSE trading symbols of the fund (NSE renames tickers, e.g.
 #                 SETFNIF50 -> SBINIFTY50 on 30 Oct 2026). Rows of the old symbol dated on or
@@ -161,10 +161,13 @@ etfs:
     group: control
     tracked: true
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 25000
+    creation_unit_history:
+      - {size: 50000, from: 2024-02-05, source: "Nippon SID dated 28 Nov 2025 pp.5, 50, 51 (50,000 units), https://mf.nipponindiaim.com/InvestorServices/SIDETF/NipponIndia-ETF-Nifty-50-BeES.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_NIFTYBEES_sid.pdf. Start date = first NSE units file (2024-02-05); the SID documents the size in late 2025, the earlier months are inferred from IssdCptl multiples (every change is a whole multiple of 50,000 within 1 unit, and 64 of 116 are not multiples of 100,000) (D58)"}
+      - {size: 25000, from: 2026-09-07, source: "Nippon fund page read 2026-11-20 (creation unit size viz. 25,000 units), raw data/raw/scheme_docs/2026-11-20/nippon_NIFTYBEES_fund_page.html. The change date is inferred from IssdCptl multiples: 2026-09-07 is the first change that is not a multiple of 50,000 (the Sep 2026 product note still says 50,000); the true date is on or before it (D58)"}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control: no overseas cap applies."
-    verify: [bloomberg]
+    notes: "Domestic control: no overseas cap applies. Creation unit 25,000 (fund page Nov 2026) from about 7 Sep 2026; 50,000 before (SID Nov 2025). Product notes to Sep 2026 still say 50,000 (D58)."
+    verify: [bloomberg, creation_unit_history]
 
   - symbol: GOLDBEES
     name: "Nippon India ETF Gold BeES"
@@ -178,10 +181,13 @@ etfs:
     group: bullion
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 120000
+    creation_unit_history:
+      - {size: 5000, from: 2024-02-05, source: "INFERRED, not documented: inferred from IssdCptl multiples. 77 changes 5 Feb 2024 - 9 Jun 2025 are whole multiples of 5,000 within 3 units, 32 are not multiples of 10,000; the true size could be a smaller divisor of 5,000 (D58)"}
+      - {size: 120000, from: 2025-06-23, source: "Nippon SID dated 28 Nov 2025 pp.5, 41, 43 (120,000 units), https://mf.nipponindiaim.com/InvestorServices/SIDETF/NipponIndia-ETF-Gold-BeEs.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_GOLDBEES_sid.pdf; fund page and Sep 2026 product note also 120,000. The start date is inferred from IssdCptl multiples: 2025-06-23 is the first change after the last one (2025-06-09) that is not a multiple of 120,000 (D58)"}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Bullion module (v2); not tracked yet."
-    verify: []
+    notes: "Bullion module (v2); not tracked yet. Creation unit 120,000 from about 23 Jun 2025 (documented size, date inferred); about 5,000 before (inferred only, D58)."
+    verify: [creation_unit_history]
 
   - symbol: SILVERBEES
     name: "Nippon India Silver ETF"
@@ -195,10 +201,13 @@ etfs:
     group: bullion
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 31000
+    creation_unit_history:
+      - {size: 30000, from: 2024-02-05, source: "INFERRED, not documented: inferred from IssdCptl multiples. 53 of 54 changes 5 Feb 2024 - 2 Jun 2025 are whole multiples of 30,000 (the 9 Jun 2025 change, +2,631,000, fits neither size) (D58)"}
+      - {size: 31000, from: 2025-06-23, source: "Nippon SID dated 28 Nov 2025 pp.5, 36 (31,000 units), https://mf.nipponindiaim.com/InvestorServices/SIDETF/NipponIndia-Silver-ETF.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_SILVERBEES_sid.pdf; fund page and Sep 2026 product note also 31,000. The start date is inferred from IssdCptl multiples: 2025-06-23 is the first change that is a multiple of 31,000 and not of 30,000; every later change fits (D58)"}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Bullion module (v2); not tracked yet. NSE symbol SILVERBEES; AMFI scheme name is 'Nippon India Silver ETF'."
-    verify: []
+    notes: "Bullion module (v2); not tracked yet. NSE symbol SILVERBEES; AMFI scheme name is 'Nippon India Silver ETF'. Creation unit 31,000 from about 23 Jun 2025 (documented size, date inferred); 30,000 before (inferred only, D58)."
+    verify: [creation_unit_history]
     former_symbols:
       - symbol: NETFSILVER
         until: 2022-05-09
@@ -216,10 +225,13 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 5000
+    creation_unit_history:
+      - {size: 10000, from: 2024-02-05, source: "Nippon SID dated 28 Nov 2025 pp.5, 50, 51 (10,000 units), https://mf.nipponindiaim.com/InvestorServices/SIDETF/NipponIndia-ETF-Nifty-Next-50-Junior-BeES.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_JUNIORBEES_sid.pdf; product notes Jul and Sep 2026 also 10,000. Start date = first NSE units file; the earlier months are inferred from IssdCptl multiples (115 of 115 changes fit; none before Jul 2026 is a non-multiple of 10,000) (D58)"}
+      - {size: 5000, from: 2026-07-20, source: "Nippon fund page read 2026-11-20 (creation unit size viz. 5,000 units), raw data/raw/scheme_docs/2026-11-20/nippon_JUNIORBEES_fund_page.html. The change date is inferred from IssdCptl multiples: 2026-07-20 is the first change that is not a multiple of 10,000; the true date is on or before it (D58)"}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control."
-    verify: []
+    notes: "Domestic control. Creation unit 5,000 (fund page Nov 2026) from about 20 Jul 2026; 10,000 before (SID Nov 2025). Product notes to Sep 2026 still say 10,000 (D58)."
+    verify: [bloomberg, creation_unit_history]
 
   - symbol: BANKBEES
     name: "Nippon India ETF Nifty Bank BeES"
@@ -233,10 +245,13 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 5000
+    creation_unit_history:
+      - {size: 10000, from: 2024-02-05, source: "Nippon SID dated 28 Nov 2025 pp.5, 50, 51 (10,000 units), https://mf.nipponindiaim.com/InvestorServices/SIDETF/NipponIndia-ETF-Nifty-Bank-BeES.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_BANKBEES_sid.pdf; product notes Jun and Sep 2026 also 10,000. Start date = first NSE units file; the earlier months are inferred from IssdCptl multiples (113 of 113 changes fit) (D58)"}
+      - {size: 5000, from: 2026-07-20, source: "Nippon fund page read 2026-11-20 (creation unit size viz. 5,000 units), raw data/raw/scheme_docs/2026-11-20/nippon_BANKBEES_fund_page.html. The change date is inferred from IssdCptl multiples: 2026-07-20 is the first change that is not a multiple of 10,000; the true date is on or before it (D58)"}
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control."
-    verify: []
+    notes: "Domestic control. Creation unit 5,000 (fund page Nov 2026) from about 20 Jul 2026; 10,000 before (SID Nov 2025). Product notes to Sep 2026 still say 10,000 (D58)."
+    verify: [bloomberg, creation_unit_history]
 
   - symbol: NIFTYIETF
     name: "ICICI Prudential Nifty 50 ETF"
@@ -250,9 +265,9 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 50000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control: large Nifty 50 ETF from a different fund house than NIFTYBEES."
+    notes: "Domestic control: large Nifty 50 ETF from a different fund house than NIFTYBEES. Creation unit 50,000: ICICI Pru factsheet 31 Oct 2026 ('creation unit size viz. 50,000 units and in multiples thereof (w.e.f. 11-Jan-2021)'), https://www.icicipruamc.com/blob/knowledgecentre/factsheet-schemes/Passive%20Schemes/ETFs%20Schemes/ICICI%20Prudential%20Nifty%2050%20ETF.pdf, raw data/raw/scheme_docs/2026-11-20/icici_NIFTYIETF_factsheet.pdf. 114 of 116 changes fit; the other two are the 25 Nov / 30 Dec 2024 ICICI pair (D58)."
     verify: []
     former_symbols:
       - symbol: ICICINIFTY
@@ -299,10 +314,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 25000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2007-11-01. Avg traded value Jun-Oct 2026 Rs 21.87 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2007-11-01. Avg traded value Jun-Oct 2026 Rs 21.87 cr/day. Creation unit 25,000: Nippon SID dated 28 Nov 2025 pp.5, 48, 49 and the fund page; the Jul 2026 product note says 50,000 but 113 of 113 units changes are multiples of 25,000 and 45 are not multiples of 50,000 (D58). SID: https://mf.nipponindiaim.com/InvestorServices/SIDETF/NipponIndia-ETF-Nifty-PSU-Bank-BeES.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_PSUBNKBEES_sid.pdf."
+    verify: [bloomberg]
 
   - symbol: MID150BEES
     name: "Nippon India ETF Nifty Midcap 150"
@@ -337,10 +352,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 25000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2014-04-04. Avg traded value Jun-Oct 2026 Rs 9.07 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2014-04-04. Avg traded value Jun-Oct 2026 Rs 9.07 cr/day. Creation unit 25,000: Nippon SID dated 28 Nov 2025 pp.6, 52, 53 and the fund page; the product notes May-Sep 2026 say 100,000 but 63 of 115 units changes are not multiples of 100,000. 3 changes (Jul-Aug 2024) are not multiples of 25,000 (D58). SID: https://mf.nipponindiaim.com/InvestorServices/SIDETF/CPSE-ETF-Final.pdf, raw data/raw/scheme_docs/2026-11-20/nippon_CPSEETF_sid.pdf."
+    verify: [bloomberg]
 
   - symbol: PHARMABEES
     name: "Nippon India Nifty Pharma ETF"
@@ -375,10 +390,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 100000
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2018-08-30. Avg traded value Jun-Oct 2026 Rs 7.29 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2018-08-30. Avg traded value Jun-Oct 2026 Rs 7.29 cr/day. Creation unit 100,000: ICICI Pru factsheet 31 Oct 2026 ('Directly with the AMC - 1,00,000 units and in multiples thereof (w.e.f. 11-Jan-2021)'), https://www.icicipruamc.com/blob/knowledgecentre/factsheet-schemes/Passive%20Schemes/ETFs%20Schemes/ICICI%20Prudential%20Nifty%20Next%2050%20ETF.pdf, raw data/raw/scheme_docs/2026-11-20/icici_NEXT50IETF_factsheet.pdf. 111 of 114 changes fit; the others are the 25 Nov / 30 Dec 2024 ICICI pair and +699,190 on 5 Apr 2024 (D58)."
+    verify: [bloomberg]
     former_symbols:
       - symbol: ICICINXT50
         until: 2023-12-19
@@ -396,10 +411,10 @@ etfs:
     group: control
     tracked: false
     futures_proxy: null
-    creation_unit_size: null
+    creation_unit_size: 4300
     bloomberg: {etf: null, index: null, future: null, fx: null}
-    notes: "Domestic control (R20). Listed 2017-11-28. Avg traded value Jun-Oct 2026 Rs 4.80 cr/day."
-    verify: [bloomberg, creation_unit_size]
+    notes: "Domestic control (R20). Listed 2017-11-28. Avg traded value Jun-Oct 2026 Rs 4.80 cr/day. Creation unit 4,300: ICICI Pru factsheet 31 Oct 2026 ('Directly with the AMC - 4300 units and multiples thereof'), https://www.icicipruamc.com/blob/knowledgecentre/factsheet-schemes/Passive%20Schemes/ETFs%20Schemes/BHARAT%2022%20ETF.pdf, raw data/raw/scheme_docs/2026-11-20/icici_ICICIB22_factsheet.pdf. 112 of 116 changes fit; the others are the 25 Nov / 30 Dec 2024 ICICI pair and two Mar-Apr 2024 changes (+14,489,700 and +11,284,500) that are not multiples of 4,300 (D58)."
+    verify: [bloomberg]
 
   - symbol: SENSEXIETF
     name: "ICICI Prudential BSE Sensex ETF"

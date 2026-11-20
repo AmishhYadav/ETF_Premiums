@@ -1,0 +1,1384 @@
+{
+ "holiday": [
+  {
+   "symbol": "MONQ50",
+   "ret": 15.61333,
+   "n": 912,
+   "rank": 1,
+   "p_two": 0.0,
+   "max_pre": 7.42117,
+   "dlp": 14.59011,
+   "sd": 1.36293,
+   "z": 10.64479,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "MASPTOP50",
+   "ret": 7.56324,
+   "n": 912,
+   "rank": 3,
+   "p_two": 0.00329,
+   "max_pre": 12.3419,
+   "dlp": 7.62581,
+   "sd": 1.41657,
+   "z": 5.14683,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "MAFANG",
+   "ret": 5.68992,
+   "n": 912,
+   "rank": 6,
+   "p_two": 0.00987,
+   "max_pre": 9.36376,
+   "dlp": 6.51796,
+   "sd": 1.55624,
+   "z": 3.55596,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "MAHKTECH",
+   "ret": 4.25339,
+   "n": 912,
+   "rank": 26,
+   "p_two": 0.04167,
+   "max_pre": 15.0708,
+   "dlp": 5.09454,
+   "sd": 2.01669,
+   "z": 2.06548,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "MON100",
+   "ret": 3.5975,
+   "n": 912,
+   "rank": 15,
+   "p_two": 0.02193,
+   "max_pre": 5.84591,
+   "dlp": 3.31916,
+   "sd": 1.27895,
+   "z": 2.76344,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "HNGSNGBEES",
+   "ret": -0.37572,
+   "n": 912,
+   "rank": 569,
+   "p_two": 0.75439,
+   "max_pre": 9.18067,
+   "dlp": 0.54747,
+   "sd": 1.72214,
+   "z": -0.21858,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "NIFTYBEES",
+   "ret": -0.75383,
+   "n": 912,
+   "rank": 813,
+   "p_two": 0.22917,
+   "max_pre": 3.90485,
+   "dlp": -0.2593,
+   "sd": 0.72139,
+   "z": -1.04893,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "NIFTYIETF",
+   "ret": -0.83861,
+   "n": 672,
+   "rank": 604,
+   "p_two": 0.20238,
+   "max_pre": 3.8971,
+   "dlp": -0.34483,
+   "sd": 0.80992,
+   "z": -1.03978,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "JUNIORBEES",
+   "ret": -0.60804,
+   "n": 912,
+   "rank": 733,
+   "p_two": 0.45943,
+   "max_pre": 4.79981,
+   "dlp": -0.18953,
+   "sd": 1.00246,
+   "z": -0.6084,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "BANKBEES",
+   "ret": -0.77491,
+   "n": 912,
+   "rank": 787,
+   "p_two": 0.29167,
+   "max_pre": 5.83683,
+   "dlp": -0.28493,
+   "sd": 0.88957,
+   "z": -0.8745,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "GOLDBEES",
+   "ret": -1.25029,
+   "n": 912,
+   "rank": 846,
+   "p_two": 0.18421,
+   "max_pre": 7.88544,
+   "dlp": 0.24762,
+   "sd": 1.26629,
+   "z": -0.99359,
+   "nav_same_chg": null
+  },
+  {
+   "symbol": "SILVERBEES",
+   "ret": -1.26582,
+   "n": 912,
+   "rank": 766,
+   "p_two": 0.39254,
+   "max_pre": 12.45794,
+   "dlp": 0.18803,
+   "sd": 2.2725,
+   "z": -0.56057,
+   "nav_same_chg": null
+  }
+ ],
+ "break": [
+  {
+   "symbol": "MONQ50",
+   "break_date": "2026-09-07",
+   "s": 1,
+   "supF": 2106.1108,
+   "before": 11.4792,
+   "after": 65.6793
+  },
+  {
+   "symbol": "MASPTOP50",
+   "break_date": "2026-09-07",
+   "s": 1,
+   "supF": 2247.2362,
+   "before": 16.5576,
+   "after": 40.7689
+  },
+  {
+   "symbol": "MAFANG",
+   "break_date": "2026-09-07",
+   "s": 1,
+   "supF": 1409.8871,
+   "before": 17.4259,
+   "after": 35.0523
+  },
+  {
+   "symbol": "MAHKTECH",
+   "break_date": "2026-09-07",
+   "s": 1,
+   "supF": 322.0577,
+   "before": 16.487,
+   "after": 25.4556
+  },
+  {
+   "symbol": "MON100",
+   "break_date": "2026-04-07",
+   "s": -104,
+   "supF": 669.2294,
+   "before": 5.1541,
+   "after": 16.3222
+  },
+  {
+   "symbol": "HNGSNGBEES",
+   "break_date": "2026-07-14",
+   "s": -38,
+   "supF": 167.027,
+   "before": 11.5616,
+   "after": 4.0137
+  },
+  {
+   "symbol": "NIFTYBEES",
+   "break_date": "2026-06-10",
+   "s": -61,
+   "supF": 31.4644,
+   "before": 0.0615,
+   "after": -0.0339
+  },
+  {
+   "symbol": "NIFTYIETF",
+   "break_date": "2026-06-10",
+   "s": -61,
+   "supF": 42.9474,
+   "before": 0.0781,
+   "after": -0.0318
+  },
+  {
+   "symbol": "JUNIORBEES",
+   "break_date": "2025-03-21",
+   "s": -360,
+   "supF": 42.9686,
+   "before": 0.2243,
+   "after": 0.0725
+  },
+  {
+   "symbol": "BANKBEES",
+   "break_date": "2026-07-29",
+   "s": -27,
+   "supF": 30.9152,
+   "before": -0.0015,
+   "after": -0.112
+  }
+ ],
+ "break2026": [
+  {
+   "symbol": "MONQ50",
+   "break_date": "2026-09-08",
+   "s": 2,
+   "supF": 1435.5365,
+   "before": 14.2921,
+   "after": 66.4038
+  },
+  {
+   "symbol": "MASPTOP50",
+   "break_date": "2026-09-08",
+   "s": 2,
+   "supF": 2549.7999,
+   "before": 17.8621,
+   "after": 41.1074
+  },
+  {
+   "symbol": "MAFANG",
+   "break_date": "2026-09-08",
+   "s": 2,
+   "supF": 935.2431,
+   "before": 18.0943,
+   "after": 35.3056
+  },
+  {
+   "symbol": "MAHKTECH",
+   "break_date": "2026-10-05",
+   "s": 19,
+   "supF": 485.2285,
+   "before": 18.0282,
+   "after": 28.2662
+  },
+  {
+   "symbol": "MON100",
+   "break_date": "2026-04-06",
+   "s": -105,
+   "supF": 692.9979,
+   "before": 2.776,
+   "after": 16.2823
+  },
+  {
+   "symbol": "HNGSNGBEES",
+   "break_date": "2026-07-14",
+   "s": -38,
+   "supF": 814.1241,
+   "before": 13.9295,
+   "after": 4.0137
+  },
+  {
+   "symbol": "NIFTYBEES",
+   "break_date": "2026-10-12",
+   "s": 24,
+   "supF": 39.6534,
+   "before": 0.0631,
+   "after": -0.1869
+  },
+  {
+   "symbol": "NIFTYIETF",
+   "break_date": "2026-10-14",
+   "s": 26,
+   "supF": 56.9414,
+   "before": 0.0727,
+   "after": -0.2206
+  },
+  {
+   "symbol": "JUNIORBEES",
+   "break_date": "2026-10-13",
+   "s": 25,
+   "supF": 27.1479,
+   "before": 0.0803,
+   "after": -0.138
+  },
+  {
+   "symbol": "BANKBEES",
+   "break_date": "2026-07-29",
+   "s": -27,
+   "supF": 28.7426,
+   "before": 0.0332,
+   "after": -0.112
+  }
+ ],
+ "placebo": {
+  "five ceilinged funds": {
+   "stat": 12.96081161136328,
+   "rank": 2,
+   "n": 950,
+   "max_pre": 4.677223547685435,
+   "max_pre_date": "2024-04-05",
+   "top5": [
+    [
+     "2026-09-08",
+     13.6
+    ],
+    [
+     "2026-09-07",
+     12.96
+    ],
+    [
+     "2026-09-09",
+     11.79
+    ],
+    [
+     "2026-09-11",
+     11.58
+    ],
+    [
+     "2026-09-10",
+     10.6
+    ],
+    [
+     "2026-09-15",
+     10.07
+    ],
+    [
+     "2026-10-06",
+     9.79
+    ],
+    [
+     "2026-09-04",
+     9.56
+    ]
+   ]
+  },
+  "four US-linked": {
+   "stat": 15.311648304266276,
+   "rank": 2,
+   "n": 950,
+   "max_pre": 5.919011183146804,
+   "max_pre_date": "2025-03-20",
+   "top5": [
+    [
+     "2026-09-08",
+     16.4
+    ],
+    [
+     "2026-09-07",
+     15.31
+    ],
+    [
+     "2026-09-11",
+     14.98
+    ],
+    [
+     "2026-09-09",
+     14.64
+    ],
+    [
+     "2026-09-15",
+     13.5
+    ],
+    [
+     "2026-09-10",
+     13.42
+    ],
+    [
+     "2026-09-04",
+     11.35
+    ],
+    [
+     "2026-09-16",
+     11.2
+    ]
+   ]
+  },
+  "six": {
+   "stat": 10.770794035273758,
+   "rank": 2,
+   "n": 950,
+   "max_pre": 4.261540524050362,
+   "max_pre_date": "2024-04-05",
+   "top5": [
+    [
+     "2026-09-08",
+     11.29
+    ],
+    [
+     "2026-09-07",
+     10.77
+    ],
+    [
+     "2026-09-09",
+     9.83
+    ],
+    [
+     "2026-09-11",
+     9.72
+    ],
+    [
+     "2026-09-10",
+     8.89
+    ],
+    [
+     "2026-10-06",
+     8.54
+    ],
+    [
+     "2026-09-15",
+     8.39
+    ],
+    [
+     "2026-10-05",
+     7.96
+    ]
+   ]
+  }
+ },
+ "placebo_fund": {
+  "MONQ50": {
+   "stat": 32.733258515555804,
+   "rank": 7,
+   "n": 950
+  },
+  "MASPTOP50": {
+   "stat": 16.550955510433123,
+   "rank": 2,
+   "n": 950
+  },
+  "MAFANG": {
+   "stat": 9.838899735955037,
+   "rank": 9,
+   "n": 950
+  },
+  "MAHKTECH": {
+   "stat": 3.6994901907159843,
+   "rank": 33,
+   "n": 950
+  },
+  "MON100": {
+   "stat": 2.691580858979878,
+   "rank": 51,
+   "n": 950
+  },
+  "HNGSNGBEES": {
+   "stat": -0.03726849420916424,
+   "rank": 474,
+   "n": 950
+  },
+  "NIFTYBEES": {
+   "stat": 0.06268635807126516,
+   "rank": 250,
+   "n": 950
+  },
+  "JUNIORBEES": {
+   "stat": 0.20195513473399782,
+   "rank": 56,
+   "n": 950
+  },
+  "BANKBEES": {
+   "stat": 0.16143456008879403,
+   "rank": 72,
+   "n": 950
+  }
+ },
+ "event_path": [
+  {
+   "s": -20,
+   "BANKBEES": 0.017,
+   "HNGSNGBEES": 5.255,
+   "JUNIORBEES": -0.04,
+   "MAFANG": 18.213,
+   "MAHKTECH": 18.43,
+   "MASPTOP50": 18.089,
+   "MON100": 18.508,
+   "MONQ50": 17.911,
+   "NIFTYBEES": -0.11,
+   "NIFTYIETF": -0.164
+  },
+  {
+   "s": -19,
+   "BANKBEES": -0.214,
+   "HNGSNGBEES": 4.529,
+   "JUNIORBEES": 0.035,
+   "MAFANG": 16.594,
+   "MAHKTECH": 16.141,
+   "MASPTOP50": 17.674,
+   "MON100": 17.056,
+   "MONQ50": 15.388,
+   "NIFTYBEES": 0.06,
+   "NIFTYIETF": 0.229
+  },
+  {
+   "s": -18,
+   "BANKBEES": -0.115,
+   "HNGSNGBEES": 4.677,
+   "JUNIORBEES": 0.029,
+   "MAFANG": 18.002,
+   "MAHKTECH": 18.71,
+   "MASPTOP50": 18.39,
+   "MON100": 18.469,
+   "MONQ50": 18.713,
+   "NIFTYBEES": 0.041,
+   "NIFTYIETF": 0.025
+  },
+  {
+   "s": -17,
+   "BANKBEES": -0.182,
+   "HNGSNGBEES": 4.759,
+   "JUNIORBEES": -0.273,
+   "MAFANG": 18.369,
+   "MAHKTECH": 19.462,
+   "MASPTOP50": 18.73,
+   "MON100": 18.417,
+   "MONQ50": 17.943,
+   "NIFTYBEES": -0.104,
+   "NIFTYIETF": -0.139
+  },
+  {
+   "s": -16,
+   "BANKBEES": 0.078,
+   "HNGSNGBEES": 4.703,
+   "JUNIORBEES": -0.082,
+   "MAFANG": 18.804,
+   "MAHKTECH": 17.965,
+   "MASPTOP50": 18.011,
+   "MON100": 17.611,
+   "MONQ50": 17.208,
+   "NIFTYBEES": -0.004,
+   "NIFTYIETF": 0.004
+  },
+  {
+   "s": -15,
+   "BANKBEES": 0.036,
+   "HNGSNGBEES": 6.377,
+   "JUNIORBEES": 0.221,
+   "MAFANG": 16.305,
+   "MAHKTECH": 19.583,
+   "MASPTOP50": 17.555,
+   "MON100": 16.972,
+   "MONQ50": 17.404,
+   "NIFTYBEES": 0.186,
+   "NIFTYIETF": 0.154
+  },
+  {
+   "s": -14,
+   "BANKBEES": 0.369,
+   "HNGSNGBEES": 5.24,
+   "JUNIORBEES": 0.293,
+   "MAFANG": 19.175,
+   "MAHKTECH": 17.172,
+   "MASPTOP50": 18.529,
+   "MON100": 18.372,
+   "MONQ50": 18.366,
+   "NIFTYBEES": 0.349,
+   "NIFTYIETF": 0.353
+  },
+  {
+   "s": -13,
+   "BANKBEES": 0.182,
+   "HNGSNGBEES": 4.38,
+   "JUNIORBEES": 0.221,
+   "MAFANG": 18.9,
+   "MAHKTECH": 17.227,
+   "MASPTOP50": 18.465,
+   "MON100": 18.216,
+   "MONQ50": 17.933,
+   "NIFTYBEES": 0.243,
+   "NIFTYIETF": 0.21
+  },
+  {
+   "s": -12,
+   "BANKBEES": -0.047,
+   "HNGSNGBEES": 3.763,
+   "JUNIORBEES": 0.017,
+   "MAFANG": 19.239,
+   "MAHKTECH": 18.624,
+   "MASPTOP50": 18.91,
+   "MON100": 19.846,
+   "MONQ50": 20.147,
+   "NIFTYBEES": 0.023,
+   "NIFTYIETF": 0.042
+  },
+  {
+   "s": -11,
+   "BANKBEES": -0.021,
+   "HNGSNGBEES": 3.494,
+   "JUNIORBEES": 0.026,
+   "MAFANG": 17.56,
+   "MAHKTECH": 18.435,
+   "MASPTOP50": 18.045,
+   "MON100": 18.376,
+   "MONQ50": 18.226,
+   "NIFTYBEES": 0.096,
+   "NIFTYIETF": 0.118
+  },
+  {
+   "s": -10,
+   "BANKBEES": -0.197,
+   "HNGSNGBEES": 2.664,
+   "JUNIORBEES": -0.059,
+   "MAFANG": 18.675,
+   "MAHKTECH": 16.485,
+   "MASPTOP50": 19.262,
+   "MON100": 18.998,
+   "MONQ50": 19.798,
+   "NIFTYBEES": 0.081,
+   "NIFTYIETF": 0.079
+  },
+  {
+   "s": -9,
+   "BANKBEES": -0.3,
+   "HNGSNGBEES": 2.637,
+   "JUNIORBEES": -0.142,
+   "MAFANG": 17.716,
+   "MAHKTECH": 18.915,
+   "MASPTOP50": 17.785,
+   "MON100": 17.907,
+   "MONQ50": 17.294,
+   "NIFTYBEES": -0.105,
+   "NIFTYIETF": -0.014
+  },
+  {
+   "s": -8,
+   "BANKBEES": -0.217,
+   "HNGSNGBEES": 2.401,
+   "JUNIORBEES": -0.273,
+   "MAFANG": 19.027,
+   "MAHKTECH": 19.599,
+   "MASPTOP50": 18.688,
+   "MON100": 19.164,
+   "MONQ50": 19.197,
+   "NIFTYBEES": -0.194,
+   "NIFTYIETF": -0.217
+  },
+  {
+   "s": -7,
+   "BANKBEES": 0.07,
+   "HNGSNGBEES": 2.667,
+   "JUNIORBEES": 0.079,
+   "MAFANG": 17.62,
+   "MAHKTECH": 17.915,
+   "MASPTOP50": 17.747,
+   "MON100": 17.943,
+   "MONQ50": 18.166,
+   "NIFTYBEES": 0.358,
+   "NIFTYIETF": 0.356
+  },
+  {
+   "s": -6,
+   "BANKBEES": 0.08,
+   "HNGSNGBEES": 2.164,
+   "JUNIORBEES": 0.124,
+   "MAFANG": 17.949,
+   "MAHKTECH": 17.442,
+   "MASPTOP50": 18.449,
+   "MON100": 18.18,
+   "MONQ50": 18.332,
+   "NIFTYBEES": 0.378,
+   "NIFTYIETF": 0.342
+  },
+  {
+   "s": -5,
+   "BANKBEES": -0.018,
+   "HNGSNGBEES": 2.43,
+   "JUNIORBEES": -0.182,
+   "MAFANG": 16.879,
+   "MAHKTECH": 18.738,
+   "MASPTOP50": 17.316,
+   "MON100": 16.681,
+   "MONQ50": 17.098,
+   "NIFTYBEES": -0.016,
+   "NIFTYIETF": -0.01
+  },
+  {
+   "s": -4,
+   "BANKBEES": -1.012,
+   "HNGSNGBEES": 2.118,
+   "JUNIORBEES": -0.576,
+   "MAFANG": 17.466,
+   "MAHKTECH": 18.498,
+   "MASPTOP50": 18.267,
+   "MON100": 19.101,
+   "MONQ50": 20.215,
+   "NIFTYBEES": 0.106,
+   "NIFTYIETF": 0.089
+  },
+  {
+   "s": -3,
+   "BANKBEES": -0.247,
+   "HNGSNGBEES": 2.99,
+   "JUNIORBEES": -0.089,
+   "MAFANG": 18.547,
+   "MAHKTECH": 19.4,
+   "MASPTOP50": 18.555,
+   "MON100": 18.38,
+   "MONQ50": 18.966,
+   "NIFTYBEES": -0.383,
+   "NIFTYIETF": -0.285
+  },
+  {
+   "s": -2,
+   "BANKBEES": -0.005,
+   "HNGSNGBEES": 2.847,
+   "JUNIORBEES": -0.165,
+   "MAFANG": 19.34,
+   "MAHKTECH": 20.0,
+   "MASPTOP50": 19.432,
+   "MON100": 19.752,
+   "MONQ50": 19.861,
+   "NIFTYBEES": -0.062,
+   "NIFTYIETF": -0.042
+  },
+  {
+   "s": -1,
+   "BANKBEES": 0.18,
+   "HNGSNGBEES": 3.683,
+   "JUNIORBEES": -0.265,
+   "MAFANG": 17.996,
+   "MAHKTECH": 20.5,
+   "MASPTOP50": 17.476,
+   "MON100": 17.982,
+   "MONQ50": 18.091,
+   "NIFTYBEES": 0.135,
+   "NIFTYIETF": 0.041
+  },
+  {
+   "s": 0,
+   "BANKBEES": 0.229,
+   "HNGSNGBEES": 2.5,
+   "JUNIORBEES": 0.265,
+   "MAFANG": 16.882,
+   "MAHKTECH": 17.542,
+   "MASPTOP50": 17.572,
+   "MON100": 17.584,
+   "MONQ50": 17.764,
+   "NIFTYBEES": 0.253,
+   "NIFTYIETF": 0.256
+  },
+  {
+   "s": 1,
+   "BANKBEES": -0.056,
+   "HNGSNGBEES": 3.047,
+   "JUNIORBEES": 0.075,
+   "MAFANG": 23.4,
+   "MAHKTECH": 22.637,
+   "MASPTOP50": 25.198,
+   "MON100": 20.903,
+   "MONQ50": 32.354,
+   "NIFTYBEES": -0.006,
+   "NIFTYIETF": -0.089
+  },
+  {
+   "s": 2,
+   "BANKBEES": 0.069,
+   "HNGSNGBEES": 2.568,
+   "JUNIORBEES": -0.27,
+   "MAFANG": 30.274,
+   "MAHKTECH": 24.126,
+   "MASPTOP50": 37.361,
+   "MON100": 23.356,
+   "MONQ50": 50.007,
+   "NIFTYBEES": 0.173,
+   "NIFTYIETF": 0.251
+  },
+  {
+   "s": 3,
+   "BANKBEES": 0.374,
+   "HNGSNGBEES": 2.299,
+   "JUNIORBEES": 0.089,
+   "MAFANG": 27.992,
+   "MAHKTECH": 23.366,
+   "MASPTOP50": 41.238,
+   "MON100": 21.923,
+   "MONQ50": 59.547,
+   "NIFTYBEES": 0.331,
+   "NIFTYIETF": 0.324
+  },
+  {
+   "s": 4,
+   "BANKBEES": -0.341,
+   "HNGSNGBEES": 3.008,
+   "JUNIORBEES": 0.078,
+   "MAFANG": 26.393,
+   "MAHKTECH": 22.563,
+   "MASPTOP50": 35.755,
+   "MON100": 19.73,
+   "MONQ50": 54.056,
+   "NIFTYBEES": -0.232,
+   "NIFTYIETF": -0.219
+  },
+  {
+   "s": 5,
+   "BANKBEES": -0.094,
+   "HNGSNGBEES": 3.028,
+   "JUNIORBEES": 0.208,
+   "MAFANG": 31.366,
+   "MAHKTECH": 21.746,
+   "MASPTOP50": 34.504,
+   "MON100": 20.345,
+   "MONQ50": 62.599,
+   "NIFTYBEES": 0.097,
+   "NIFTYIETF": 0.057
+  },
+  {
+   "s": 6,
+   "BANKBEES": 0.148,
+   "HNGSNGBEES": 3.501,
+   "JUNIORBEES": 0.247,
+   "MAFANG": 29.34,
+   "MAHKTECH": 20.71,
+   "MASPTOP50": 34.525,
+   "MON100": 18.659,
+   "MONQ50": 66.797,
+   "NIFTYBEES": 0.335,
+   "NIFTYIETF": 0.386
+  },
+  {
+   "s": 7,
+   "BANKBEES": -0.163,
+   "HNGSNGBEES": 3.092,
+   "JUNIORBEES": 0.4,
+   "MAFANG": 28.991,
+   "MAHKTECH": 18.811,
+   "MASPTOP50": 38.913,
+   "MON100": 18.542,
+   "MONQ50": 85.487,
+   "NIFTYBEES": 0.075,
+   "NIFTYIETF": 0.076
+  },
+  {
+   "s": 8,
+   "BANKBEES": 0.08,
+   "HNGSNGBEES": 3.256,
+   "JUNIORBEES": 0.231,
+   "MAFANG": 31.437,
+   "MAHKTECH": 20.745,
+   "MASPTOP50": 44.309,
+   "MON100": 17.181,
+   "MONQ50": 104.034,
+   "NIFTYBEES": 0.246,
+   "NIFTYIETF": 0.227
+  },
+  {
+   "s": 9,
+   "BANKBEES": -0.126,
+   "HNGSNGBEES": 2.796,
+   "JUNIORBEES": 0.182,
+   "MAFANG": 34.065,
+   "MAHKTECH": 18.457,
+   "MASPTOP50": 60.989,
+   "MON100": 17.912,
+   "MONQ50": 120.179,
+   "NIFTYBEES": 0.09,
+   "NIFTYIETF": 0.075
+  },
+  {
+   "s": 10,
+   "BANKBEES": -0.03,
+   "HNGSNGBEES": 1.657,
+   "JUNIORBEES": 0.243,
+   "MAFANG": 32.101,
+   "MAHKTECH": 17.989,
+   "MASPTOP50": 51.209,
+   "MON100": 17.285,
+   "MONQ50": 98.717,
+   "NIFTYBEES": 0.26,
+   "NIFTYIETF": 0.146
+  },
+  {
+   "s": 11,
+   "BANKBEES": 0.121,
+   "HNGSNGBEES": 1.559,
+   "JUNIORBEES": 0.151,
+   "MAFANG": 27.105,
+   "MAHKTECH": 18.938,
+   "MASPTOP50": 34.797,
+   "MON100": 12.944,
+   "MONQ50": 74.648,
+   "NIFTYBEES": 0.206,
+   "NIFTYIETF": 0.259
+  },
+  {
+   "s": 12,
+   "BANKBEES": -0.119,
+   "HNGSNGBEES": 2.189,
+   "JUNIORBEES": 0.005,
+   "MAFANG": 25.122,
+   "MAHKTECH": 19.449,
+   "MASPTOP50": 34.273,
+   "MON100": 13.107,
+   "MONQ50": 51.494,
+   "NIFTYBEES": 0.058,
+   "NIFTYIETF": 0.083
+  },
+  {
+   "s": 13,
+   "BANKBEES": 0.195,
+   "HNGSNGBEES": 1.925,
+   "JUNIORBEES": 0.124,
+   "MAFANG": 24.913,
+   "MAHKTECH": 19.264,
+   "MASPTOP50": 34.514,
+   "MON100": 12.4,
+   "MONQ50": 55.207,
+   "NIFTYBEES": 0.353,
+   "NIFTYIETF": 0.238
+  },
+  {
+   "s": 14,
+   "BANKBEES": 0.018,
+   "HNGSNGBEES": 2.598,
+   "JUNIORBEES": -0.052,
+   "MAFANG": 27.222,
+   "MAHKTECH": 20.551,
+   "MASPTOP50": 35.879,
+   "MON100": 12.553,
+   "MONQ50": 56.614,
+   "NIFTYBEES": 0.071,
+   "NIFTYIETF": 0.029
+  },
+  {
+   "s": 15,
+   "BANKBEES": 0.106,
+   "HNGSNGBEES": 1.573,
+   "JUNIORBEES": 0.092,
+   "MAFANG": 26.304,
+   "MAHKTECH": 21.507,
+   "MASPTOP50": 35.4,
+   "MON100": 12.203,
+   "MONQ50": 43.619,
+   "NIFTYBEES": 0.245,
+   "NIFTYIETF": 0.245
+  },
+  {
+   "s": 16,
+   "BANKBEES": 0.34,
+   "HNGSNGBEES": 1.355,
+   "JUNIORBEES": 1.329,
+   "MAFANG": 28.458,
+   "MAHKTECH": 22.353,
+   "MASPTOP50": 37.159,
+   "MON100": 11.806,
+   "MONQ50": 44.744,
+   "NIFTYBEES": 0.145,
+   "NIFTYIETF": 0.082
+  },
+  {
+   "s": 17,
+   "BANKBEES": 0.187,
+   "HNGSNGBEES": 2.148,
+   "JUNIORBEES": 0.214,
+   "MAFANG": 29.159,
+   "MAHKTECH": 22.454,
+   "MASPTOP50": 37.509,
+   "MON100": 12.053,
+   "MONQ50": 47.96,
+   "NIFTYBEES": 0.193,
+   "NIFTYIETF": 0.204
+  },
+  {
+   "s": 18,
+   "BANKBEES": 0.099,
+   "HNGSNGBEES": 1.629,
+   "JUNIORBEES": 0.149,
+   "MAFANG": 32.218,
+   "MAHKTECH": 21.027,
+   "MASPTOP50": 39.431,
+   "MON100": 12.1,
+   "MONQ50": 47.884,
+   "NIFTYBEES": 0.298,
+   "NIFTYIETF": 0.305
+  },
+  {
+   "s": 19,
+   "BANKBEES": -0.279,
+   "HNGSNGBEES": 4.068,
+   "JUNIORBEES": -0.062,
+   "MAFANG": 36.716,
+   "MAHKTECH": 24.101,
+   "MASPTOP50": 44.738,
+   "MON100": 12.494,
+   "MONQ50": 50.776,
+   "NIFTYBEES": 0.01,
+   "NIFTYIETF": 0.078
+  },
+  {
+   "s": 20,
+   "BANKBEES": -0.356,
+   "HNGSNGBEES": 3.686,
+   "JUNIORBEES": 0.217,
+   "MAFANG": 41.299,
+   "MAHKTECH": 24.226,
+   "MASPTOP50": 46.403,
+   "MON100": 12.201,
+   "MONQ50": 57.545,
+   "NIFTYBEES": -0.342,
+   "NIFTYIETF": -0.256
+  },
+  {
+   "s": 21,
+   "BANKBEES": -0.088,
+   "HNGSNGBEES": 4.429,
+   "JUNIORBEES": 0.136,
+   "MAFANG": 46.986,
+   "MAHKTECH": 27.873,
+   "MASPTOP50": 50.749,
+   "MON100": 12.087,
+   "MONQ50": 74.335,
+   "NIFTYBEES": -0.083,
+   "NIFTYIETF": 0.005
+  },
+  {
+   "s": 22,
+   "BANKBEES": -0.113,
+   "HNGSNGBEES": 4.163,
+   "JUNIORBEES": 0.408,
+   "MAFANG": 41.029,
+   "MAHKTECH": 29.141,
+   "MASPTOP50": 45.952,
+   "MON100": 9.822,
+   "MONQ50": 68.317,
+   "NIFTYBEES": 0.075,
+   "NIFTYIETF": 0.149
+  },
+  {
+   "s": 23,
+   "BANKBEES": 0.021,
+   "HNGSNGBEES": 3.512,
+   "JUNIORBEES": 0.071,
+   "MAFANG": 44.371,
+   "MAHKTECH": 25.094,
+   "MASPTOP50": 49.791,
+   "MON100": 11.013,
+   "MONQ50": 72.239,
+   "NIFTYBEES": 0.19,
+   "NIFTYIETF": 0.149
+  },
+  {
+   "s": 24,
+   "BANKBEES": -0.208,
+   "HNGSNGBEES": 5.24,
+   "JUNIORBEES": 0.222,
+   "MAFANG": 47.445,
+   "MAHKTECH": 25.744,
+   "MASPTOP50": 47.825,
+   "MON100": 10.472,
+   "MONQ50": 71.963,
+   "NIFTYBEES": -0.16,
+   "NIFTYIETF": 0.115
+  },
+  {
+   "s": 25,
+   "BANKBEES": 0.065,
+   "HNGSNGBEES": 4.541,
+   "JUNIORBEES": -0.091,
+   "MAFANG": 45.484,
+   "MAHKTECH": 27.04,
+   "MASPTOP50": 45.231,
+   "MON100": 11.748,
+   "MONQ50": 72.437,
+   "NIFTYBEES": 0.016,
+   "NIFTYIETF": 0.079
+  },
+  {
+   "s": 26,
+   "BANKBEES": 0.16,
+   "HNGSNGBEES": 4.462,
+   "JUNIORBEES": -0.225,
+   "MAFANG": 44.207,
+   "MAHKTECH": 27.043,
+   "MASPTOP50": 44.743,
+   "MON100": 12.055,
+   "MONQ50": 73.282,
+   "NIFTYBEES": -0.107,
+   "NIFTYIETF": -0.109
+  },
+  {
+   "s": 27,
+   "BANKBEES": -0.181,
+   "HNGSNGBEES": 4.742,
+   "JUNIORBEES": -0.018,
+   "MAFANG": 39.01,
+   "MAHKTECH": 28.867,
+   "MASPTOP50": 39.396,
+   "MON100": 11.0,
+   "MONQ50": 68.871,
+   "NIFTYBEES": -0.312,
+   "NIFTYIETF": -0.338
+  },
+  {
+   "s": 28,
+   "BANKBEES": -0.031,
+   "HNGSNGBEES": 4.403,
+   "JUNIORBEES": 0.404,
+   "MAFANG": 42.856,
+   "MAHKTECH": 28.537,
+   "MASPTOP50": 43.576,
+   "MON100": 12.972,
+   "MONQ50": 71.119,
+   "NIFTYBEES": -0.059,
+   "NIFTYIETF": -0.175
+  },
+  {
+   "s": 29,
+   "BANKBEES": 0.141,
+   "HNGSNGBEES": 4.115,
+   "JUNIORBEES": 0.156,
+   "MAFANG": 43.65,
+   "MAHKTECH": 27.543,
+   "MASPTOP50": 44.046,
+   "MON100": 13.951,
+   "MONQ50": 70.963,
+   "NIFTYBEES": 0.03,
+   "NIFTYIETF": 0.019
+  },
+  {
+   "s": 30,
+   "BANKBEES": -0.224,
+   "HNGSNGBEES": 5.544,
+   "JUNIORBEES": -0.224,
+   "MAFANG": 41.563,
+   "MAHKTECH": 30.258,
+   "MASPTOP50": 43.483,
+   "MON100": 11.529,
+   "MONQ50": 67.396,
+   "NIFTYBEES": -0.257,
+   "NIFTYIETF": -0.244
+  },
+  {
+   "s": 31,
+   "BANKBEES": -0.176,
+   "HNGSNGBEES": 5.589,
+   "JUNIORBEES": -0.099,
+   "MAFANG": 39.497,
+   "MAHKTECH": 31.342,
+   "MASPTOP50": 41.045,
+   "MON100": 8.402,
+   "MONQ50": 61.686,
+   "NIFTYBEES": 0.044,
+   "NIFTYIETF": 0.056
+  },
+  {
+   "s": 32,
+   "BANKBEES": -0.351,
+   "HNGSNGBEES": 2.058,
+   "JUNIORBEES": -0.527,
+   "MAFANG": 36.26,
+   "MAHKTECH": 27.254,
+   "MASPTOP50": 37.558,
+   "MON100": 7.17,
+   "MONQ50": 61.415,
+   "NIFTYBEES": -0.245,
+   "NIFTYIETF": -0.252
+  },
+  {
+   "s": 33,
+   "BANKBEES": -0.133,
+   "HNGSNGBEES": 3.967,
+   "JUNIORBEES": -0.235,
+   "MAFANG": 34.473,
+   "MAHKTECH": 26.797,
+   "MASPTOP50": 39.483,
+   "MON100": 6.539,
+   "MONQ50": 59.607,
+   "NIFTYBEES": -0.076,
+   "NIFTYIETF": -0.067
+  },
+  {
+   "s": 34,
+   "BANKBEES": 0.253,
+   "HNGSNGBEES": 4.396,
+   "JUNIORBEES": -0.272,
+   "MAFANG": 35.446,
+   "MAHKTECH": 28.743,
+   "MASPTOP50": 38.549,
+   "MON100": 7.051,
+   "MONQ50": 63.479,
+   "NIFTYBEES": -0.026,
+   "NIFTYIETF": 0.014
+  },
+  {
+   "s": 35,
+   "BANKBEES": -0.118,
+   "HNGSNGBEES": 3.224,
+   "JUNIORBEES": 0.031,
+   "MAFANG": 35.669,
+   "MAHKTECH": 26.816,
+   "MASPTOP50": 38.386,
+   "MON100": 6.932,
+   "MONQ50": 64.495,
+   "NIFTYBEES": 0.237,
+   "NIFTYIETF": 0.129
+  },
+  {
+   "s": 36,
+   "BANKBEES": 0.015,
+   "HNGSNGBEES": 2.975,
+   "JUNIORBEES": -0.068,
+   "MAFANG": 31.597,
+   "MAHKTECH": 29.395,
+   "MASPTOP50": 37.206,
+   "MON100": 3.998,
+   "MONQ50": 62.118,
+   "NIFTYBEES": 0.064,
+   "NIFTYIETF": -0.019
+  },
+  {
+   "s": 37,
+   "BANKBEES": -0.241,
+   "HNGSNGBEES": 2.239,
+   "JUNIORBEES": -0.296,
+   "MAFANG": 29.994,
+   "MAHKTECH": 27.801,
+   "MASPTOP50": 37.494,
+   "MON100": 4.033,
+   "MONQ50": 58.558,
+   "NIFTYBEES": -0.056,
+   "NIFTYIETF": -0.126
+  },
+  {
+   "s": 38,
+   "BANKBEES": -0.231,
+   "HNGSNGBEES": 2.569,
+   "JUNIORBEES": -0.332,
+   "MAFANG": 28.761,
+   "MAHKTECH": 28.48,
+   "MASPTOP50": 37.821,
+   "MON100": 6.453,
+   "MONQ50": 59.748,
+   "NIFTYBEES": -0.585,
+   "NIFTYIETF": -0.652
+  },
+  {
+   "s": 39,
+   "BANKBEES": -0.265,
+   "HNGSNGBEES": 3.434,
+   "JUNIORBEES": -0.294,
+   "MAFANG": 28.468,
+   "MAHKTECH": 28.246,
+   "MASPTOP50": 35.346,
+   "MON100": 8.632,
+   "MONQ50": 62.414,
+   "NIFTYBEES": -0.575,
+   "NIFTYIETF": -0.633
+  },
+  {
+   "s": 40,
+   "BANKBEES": -0.229,
+   "HNGSNGBEES": 5.233,
+   "JUNIORBEES": -0.303,
+   "MAFANG": 30.961,
+   "MAHKTECH": 30.174,
+   "MASPTOP50": 38.122,
+   "MON100": 11.205,
+   "MONQ50": 63.421,
+   "NIFTYBEES": -0.213,
+   "NIFTYIETF": -0.25
+  },
+  {
+   "s": 41,
+   "BANKBEES": -0.153,
+   "HNGSNGBEES": 3.593,
+   "JUNIORBEES": -0.038,
+   "MAFANG": 38.068,
+   "MAHKTECH": 26.824,
+   "MASPTOP50": 39.852,
+   "MON100": 14.534,
+   "MONQ50": 66.984,
+   "NIFTYBEES": -0.213,
+   "NIFTYIETF": -0.227
+  },
+  {
+   "s": 42,
+   "BANKBEES": -0.497,
+   "HNGSNGBEES": 3.202,
+   "JUNIORBEES": -0.147,
+   "MAFANG": 41.775,
+   "MAHKTECH": 27.453,
+   "MASPTOP50": 44.264,
+   "MON100": 17.82,
+   "MONQ50": 71.192,
+   "NIFTYBEES": -0.502,
+   "NIFTYIETF": -0.486
+  },
+  {
+   "s": 43,
+   "BANKBEES": -0.502,
+   "HNGSNGBEES": 4.075,
+   "JUNIORBEES": 0.324,
+   "MAFANG": 44.204,
+   "MAHKTECH": 29.466,
+   "MASPTOP50": 44.938,
+   "MON100": 19.874,
+   "MONQ50": 73.781,
+   "NIFTYBEES": -0.319,
+   "NIFTYIETF": -0.225
+  },
+  {
+   "s": 44,
+   "BANKBEES": -0.383,
+   "HNGSNGBEES": 4.249,
+   "JUNIORBEES": -0.42,
+   "MAFANG": 41.462,
+   "MAHKTECH": 29.781,
+   "MASPTOP50": 42.785,
+   "MON100": 18.709,
+   "MONQ50": 72.815,
+   "NIFTYBEES": -0.281,
+   "NIFTYIETF": -0.313
+  },
+  {
+   "s": 45,
+   "BANKBEES": -0.492,
+   "HNGSNGBEES": 4.103,
+   "JUNIORBEES": -0.405,
+   "MAFANG": 40.722,
+   "MAHKTECH": 30.468,
+   "MASPTOP50": 42.778,
+   "MON100": 16.976,
+   "MONQ50": 70.613,
+   "NIFTYBEES": -0.582,
+   "NIFTYIETF": -0.551
+  },
+  {
+   "s": 46,
+   "BANKBEES": -0.186,
+   "HNGSNGBEES": 4.628,
+   "JUNIORBEES": -0.082,
+   "MAFANG": 40.37,
+   "MAHKTECH": 31.523,
+   "MASPTOP50": 41.04,
+   "MON100": 16.134,
+   "MONQ50": 69.495,
+   "NIFTYBEES": -0.186,
+   "NIFTYIETF": -0.292
+  },
+  {
+   "s": 47,
+   "BANKBEES": -0.292,
+   "HNGSNGBEES": 4.937,
+   "JUNIORBEES": -0.015,
+   "MAFANG": 39.252,
+   "MAHKTECH": 33.689,
+   "MASPTOP50": 40.574,
+   "MON100": 15.116,
+   "MONQ50": 69.916,
+   "NIFTYBEES": -0.122,
+   "NIFTYIETF": -0.112
+  }
+ ],
+ "did": {
+  "BANKBEES": -0.003,
+  "GOLDBEES": -0.049,
+  "HNGSNGBEES": -3.669,
+  "JUNIORBEES": -0.008,
+  "MAFANG": 19.41,
+  "MAHKTECH": 8.959,
+  "MASPTOP50": 23.443,
+  "MON100": -8.223,
+  "MONQ50": 44.861,
+  "NIFTYBEES": -0.04,
+  "NIFTYIETF": -0.044,
+  "SILVERBEES": -0.111
+ }
+}

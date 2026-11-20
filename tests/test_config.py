@@ -599,9 +599,49 @@ def test_domestic_control_creation_unit_sizes_from_scheme_documents():
         etf = u.by_symbol(symbol)
         assert etf.creation_unit_size == size, symbol
         assert "creation_unit_size" not in etf.verify, symbol
-    for symbol in ("PSUBNKBEES", "CPSEETF", "HDFCBSE500", "NEXT50IETF", "SBINIFTY50"):
+    for symbol in ("HDFCBSE500", "SBINIFTY50", "BANKBETA", "NIFTYBETA"):
         etf = u.by_symbol(symbol)
         assert etf.creation_unit_size is None and "creation_unit_size" in etf.verify, symbol
+
+
+def test_d58_creation_unit_sizes_and_dated_steps_load() -> None:
+    """D58: the ten funds that were null now carry a size from a fund-house document."""
+    u = load_etfs()
+    current = {
+        "NIFTYBEES": 25_000,
+        "JUNIORBEES": 5_000,
+        "BANKBEES": 5_000,
+        "GOLDBEES": 120_000,
+        "SILVERBEES": 31_000,
+        "NIFTYIETF": 50_000,
+        "PSUBNKBEES": 25_000,
+        "CPSEETF": 25_000,
+        "NEXT50IETF": 100_000,
+        "ICICIB22": 4_300,
+    }
+    for symbol, size in current.items():
+        etf = u.by_symbol(symbol)
+        assert etf.creation_unit_size == size, symbol
+        assert "creation_unit_size" not in etf.verify, symbol
+    steps = {
+        "NIFTYBEES": [(50_000, date(2024, 2, 5)), (25_000, date(2026, 9, 7))],
+        "JUNIORBEES": [(10_000, date(2024, 2, 5)), (5_000, date(2026, 7, 20))],
+        "BANKBEES": [(10_000, date(2024, 2, 5)), (5_000, date(2026, 7, 20))],
+        "GOLDBEES": [(5_000, date(2024, 2, 5)), (120_000, date(2025, 6, 23))],
+        "SILVERBEES": [(30_000, date(2024, 2, 5)), (31_000, date(2025, 6, 23))],
+    }
+    for symbol, want in steps.items():
+        etf = u.by_symbol(symbol)
+        got = [(s.size, s.from_) for s in etf.creation_unit_history]
+        assert got == want, symbol
+        assert "creation_unit_history" in etf.verify, symbol
+        # every step says where it comes from; inferred ones say so in the agreed words
+        for s in etf.creation_unit_history:
+            assert s.source
+    for symbol in ("GOLDBEES", "SILVERBEES"):
+        assert "inferred from IssdCptl multiples" in u.by_symbol(symbol).creation_unit_history[0].source
+    for symbol in ("PSUBNKBEES", "CPSEETF", "NEXT50IETF", "NIFTYIETF", "ICICIB22"):
+        assert not u.by_symbol(symbol).creation_unit_history
 
 
 def _etf_dict(**kw):
