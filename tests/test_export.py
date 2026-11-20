@@ -174,7 +174,9 @@ def test_manifest_contents(exported) -> None:
     assert "MONQ50" in m["dq_flag_counts"]["by_symbol"]
     assert m["fv_method_counts"]["MONQ50"] == {"no_nav": 1}  # its only NAV is 60 days old (D31)
     # all international sizes are confirmed (D36); only domestic/bullion controls remain
-    assert m["creation_unit_sizes_missing"] and "MASPTOP50" not in m["creation_unit_sizes_missing"]
+    # (D58: the ten Nippon/ICICI domestic controls got sizes, so the list may now be empty)
+    assert isinstance(m["creation_unit_sizes_missing"], list)
+    assert "MASPTOP50" not in m["creation_unit_sizes_missing"]
     assert m["recorder_gaps"]["rows_by_source"]["nse_etf_api"] == 11
     assert m["missing_nse_sessions_by_symbol"]["NIFTYBEES"]["count"] > 1000  # sparse fixtures
     assert m["bloomberg_files"] == []

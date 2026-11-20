@@ -632,14 +632,17 @@ def test_d58_creation_unit_sizes_and_dated_steps_load() -> None:
     }
     for symbol, want in steps.items():
         etf = u.by_symbol(symbol)
-        got = [(s.size, s.from_) for s in etf.creation_unit_history]
+        got = [(s.size, s.from_date) for s in etf.creation_unit_history]
         assert got == want, symbol
         assert "creation_unit_history" in etf.verify, symbol
         # every step says where it comes from; inferred ones say so in the agreed words
         for s in etf.creation_unit_history:
             assert s.source
     for symbol in ("GOLDBEES", "SILVERBEES"):
-        assert "inferred from IssdCptl multiples" in u.by_symbol(symbol).creation_unit_history[0].source
+        assert (
+            "inferred from IssdCptl multiples"
+            in u.by_symbol(symbol).creation_unit_history[0].source
+        )
     for symbol in ("PSUBNKBEES", "CPSEETF", "NEXT50IETF", "NIFTYIETF", "ICICIB22"):
         assert not u.by_symbol(symbol).creation_unit_history
 
