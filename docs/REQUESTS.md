@@ -136,7 +136,7 @@ Changing what an existing column means needs a `schema_version` bump and a `docs
 - Asked: 2026-11-15 (from draft 3)
 - Need: Add 15-20 liquid domestic equity ETFs (same band rule from 7 Sep 2026, open creation) to `etf_day` with the same columns as the existing four. Needed for Conley-Taber intervals in P1; four controls are too few. See `paper/draft3/README.md` and the project doc `research/DRAFT3.md`.
 - Status: done (cddf7cf, 2026-11-18): 18 added (22 controls, 9 fund houses, 12 indices), `group_label == "control"`, list and selection rule in DECISIONS D42. Schema 1.6.0. **For the research side:** (1) select controls with `group_label == "control"`; `paper/draft3/analysis/common.py` hard-codes the old four. (2) NSE ticker renames are now followed, so NIFTYIETF (before 2023-12-20), MON100 (before 2021-06-16) and SILVERBEES (before 2022-05-10) have more rows than before. Re-run anything that uses these funds before those dates. (3) New `usdinr_ref` column (FBIL USD/INR, same day) and `fx_ref_daily.parquet` for the rupee covariate (D43). Free futures are still blocked (Yahoo HTTP 429), so `fv_method` is still `nav_only`.
-- Notes: creation_unit_size for the new controls is still VERIFY (SIDs not read). HDFCBSE500 and HDFCSML250 were thin in 2023.
+- Notes: creation_unit_size: 18 of the 22 controls now have a size from a fund-house document (D50, D54, D58); still null: HDFCBSE500, SBINIFTY50, BANKBETA, NIFTYBETA (no usable primary document). Dated size changes (`creation_unit_history`) exist for HDFCNIFTY, NIFTY1, NIFTYBEES, JUNIORBEES, BANKBEES, GOLDBEES, SILVERBEES. HDFCBSE500 and HDFCSML250 were thin in 2023.
 
 ## Done
 
